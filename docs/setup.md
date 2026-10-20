@@ -99,9 +99,20 @@ Run every command from the folder you set gork up in. Docker and Podman name gor
 | `npm run gateway` | Creates or updates only the AI Gateway. |
 | `npm run destroy` | Asks you to type `gork`, then removes the container, its data and image, and the AI Gateway. Your Discord app and Cloudflare tokens stay. |
 | `npm run doctor` | Checks your settings, personality, Discord and Cloudflare, and says what to fix. |
-| `npm run probe` | A live check of the chat model, the safety screen, web search, page reads and YouTube, with your runtime token. |
+| `npm run probe` | A live check of the chat model (including a tool call with an image after it, as video frames use), the safety screen, web search, page reads and YouTube, with your runtime token. |
 
 `npm run up`, `npm run gateway` and `npm run destroy` need the admin token (`CF_ADMIN_TOKEN`). `npm run destroy` deletes the AI Gateway set in `AI_GATEWAY_ID`, and `npm run up` overwrites it with gork's settings, so use a name nothing else uses.
+
+## Updating gork
+
+gork doesn't update itself. Each release has a version number, and `npm run up` runs the image for the version of your copy of gork, so you update by getting the new copy and running `npm run up`. Security fixes come out as new releases, so update when one appears. To hear about them, click **Watch** at the top of the GitHub page, then **Custom**, tick **Releases** and click **Apply**.
+
+1. Get the new version into the same folder (keep the folder: gork's container and data are named after it).
+   - If you used `git clone`: in a terminal in the gork folder, run `git pull`.
+   - If you downloaded the ZIP: download the new ZIP, open it, and copy everything inside its `gork-main` folder over your gork folder, replacing the files when asked. Your `.env`, your `personas/custom.md` and gork's data are not in the ZIP, so they stay as they are.
+2. Run `npm run up`. It downloads the new version's image and restarts gork with your settings.
+
+The [releases page](https://github.com/ultralightspeed/gork/releases) says what changed in each version.
 
 ## Checking things
 
