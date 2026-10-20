@@ -894,3 +894,26 @@ describe("a model that can't see images (free mode's glm-4.7-flash rejects them 
     expect(body).toContain("can't see images");
   });
 });
+
+describe("respond: images that can't be downloaded", () => {
+  it("logs how many were dropped and tells the model they weren't shown", async () => {
+    const lines: string[] = [];
+    const sent = { messages: [] as ChatMessage[] };
+    const { req, deps } = setup({
+      req: { imageUrls: ["https://cdn.discordapp.com/a.png", "https://cdn.discordapp.com/b.png"] },
+      deps: {
+        downloadImages: async () => ["data:image/png;base64,AAA"],
+        log: (line) => lines.push(line),
+        answer: async (messages) => {
+          sent.messages = messages;
+          return answered();
+        },
+      },
+    });
+    await respond(req, deps);
+    expect(lines.filter((l) => l.includes("1 of 2 images couldn't be downloaded"))).toHaveLength(1);
+    expect(JSON.stringify(sent.messages[1].content)).toContain(
+      "1 image attached to the question or replied-to message couldn't be downloaded",
+    );
+  });
+});

@@ -169,6 +169,10 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   const replyImages = sees && req.replyImageUrls?.length ? await deps.downloadImages(req.replyImageUrls) : [];
   const images = [...ownImages, ...replyImages];
   const unseenImages = sees ? 0 : req.imageUrls.length + (req.replyImageUrls?.length ?? 0);
+  // downloadImages skips what it can't fetch (a redirect, a timeout, a type it doesn't take): say so, to the log and the model.
+  const asked = sees ? req.imageUrls.length + (req.replyImageUrls?.length ?? 0) : 0;
+  const failedImages = asked - images.length;
+  if (failedImages > 0) log(`images: ${failedImages} of ${asked} images couldn't be downloaded user=${req.who}`);
   const read = await watch(req, deps);
   const video =
     read && !sees && read.frames.length
@@ -227,6 +231,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
     historyBudgetChars: HISTORY_MAX_CHARS,
     images,
     unseenImages,
+    failedImages,
     video: videoContext(req, video, look, room),
   });
 
