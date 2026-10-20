@@ -8,7 +8,7 @@ gork is a self-hosted Discord bot for one small server. It answers when mentione
 
 ## Installing gork for a user
 
-Prerequisites: Node.js 24 or newer, and Docker Desktop or Podman, installed and running. No `npm install` is needed to run gork.
+Prerequisites: Node.js 24 or newer, and Docker or Podman with Compose (the command-line tools are enough; a Desktop app is not needed), installed and running. No `npm install` is needed to run gork.
 
 1. `git clone https://github.com/ultralightspeed/gork.git`, then `cd gork`.
 2. `npm run -s setup -- --no-open` (`-s` keeps npm's own banner out of the output). It starts a local setup page and prints a line starting with `SETUP_URL=` followed by its address.
