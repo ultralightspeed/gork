@@ -96,11 +96,18 @@ RUN /usr/local/bin/check-ffmpeg.sh /usr/local/bin/ffmpeg /usr/local/bin/openssl-
 # copied. node is stripped of its symbols (about 18 MB).
 FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS rootfs
 RUN apk add --no-cache binutils
+# The bundle ffmpeg checks Discord's CDN against, less the roots src/distrust.ts lists (the bot drops them from its own
+# store when it starts). The build fails if the filter does.
+COPY src/distrust.ts /tmp/distrust.ts
 RUN set -eu; mkdir -p /out/usr/local/bin /out/usr/lib /out/lib /out/etc/ssl/certs /out/tmp /out/data; \
     cp /usr/local/bin/node /out/usr/local/bin/node; strip --strip-all /out/usr/local/bin/node; \
     cp -a /lib/ld-musl-* /out/lib/; \
     cp -a /usr/lib/libstdc++.so.6* /usr/lib/libgcc_s.so.1 /out/usr/lib/; \
-    cp /etc/ssl/certs/ca-certificates.crt /out/etc/ssl/certs/; \
+    node --input-type=module -e "import { readFileSync, writeFileSync } from 'node:fs'; \
+      import { filterBundle } from '/tmp/distrust.ts'; \
+      const r = filterBundle(readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8')); \
+      writeFileSync('/out/etc/ssl/certs/ca-certificates.crt', r.text); \
+      console.log('distrusted roots removed from the CA bundle:', r.removed);"; \
     chmod 1777 /out/tmp; chown 1000:1000 /out/data
 
 FROM scratch

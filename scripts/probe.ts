@@ -4,6 +4,7 @@
 import { pathToFileURL } from "node:url";
 import { withoutSecrets } from "../src/cf.ts";
 import { CREDITS_MODEL, FREE_MODEL, readSettings, SettingsError } from "../src/config.ts";
+import { distrustRoots, OLD_NODE_WARNING } from "../src/distrust.ts";
 import { YOUTUBE_CLIENT } from "../src/youtube.ts";
 
 type Env = Record<string, string | undefined>;
@@ -224,4 +225,7 @@ async function main(): Promise<number> {
   return 0;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) process.exitCode = await main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  if (distrustRoots() === null) console.warn(`probe: ${OLD_NODE_WARNING}`);
+  process.exitCode = await main();
+}

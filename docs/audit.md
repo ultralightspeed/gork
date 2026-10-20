@@ -77,6 +77,7 @@ There is no telemetry, analytics or update check. Apart from the destinations a 
 | ffmpeg is started with only `PATH` in its environment, so the bot's tokens don't reach it. It still runs as the same user as the bot (see [Limits](#limits)). | `bareEnv` in `src/ffmpeg.ts`; `test/ffmpeg.test.ts` |
 | No token-shaped string and no `.env` file is committed. | `scripts/check-secrets.ts` (in `npm run check`); `.github/workflows/secret-scan.yml` runs gitleaks over the full history on every push |
 | A planted fake credential does not leak into requests to other hosts, log lines or error messages. | `test/canary.test.ts` |
+| Tokens only travel over TLS that refuses the roots above the eMudhra intermediates whose private keys were compromised in October 2026 (<https://emudhra.we-have-a-problem.com/>), even where Node or the system still trusts them. The bot and every host script remove them from the trust store before connecting, and the image's CA bundle (ffmpeg's) is built without them. | `DISTRUSTED_ROOTS` in `src/distrust.ts`; `Dockerfile`; `test/distrust.test.ts` |
 
 ## Subprocesses
 

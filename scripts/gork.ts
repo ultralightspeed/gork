@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, readSettings, SETTING_KEYS, SettingsError } from "../src/config.ts";
+import { distrustRoots, OLD_NODE_WARNING } from "../src/distrust.ts";
 import { TOKENS_URL } from "./lib/cloudflare-setup.ts";
 import {
   engineRunner,
@@ -409,6 +410,8 @@ export async function main(argv: string[], d: Deps): Promise<number> {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  // Before anything connects: setup and up send the Discord and Cloudflare tokens over TLS checked against this store.
+  if (distrustRoots() === null) console.warn(`gork: ${OLD_NODE_WARNING}`);
   // The engine is looked for the first time a command needs it, then remembered.
   const resolveEngine = engineResolver(spawnProbe);
   process.exitCode = await main(process.argv.slice(2), {

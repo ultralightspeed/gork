@@ -16,6 +16,7 @@ import {
   splitImageUrls,
 } from "./discord-access.ts";
 import { postEvent, postPoll, sendReply, startTyping } from "./discord-reply.ts";
+import { distrustRoots, OLD_NODE_WARNING } from "./distrust.ts";
 import { describeError, isFatalCloseCode, isFatalLoginError } from "./errors.ts";
 import { caBundle, Gate } from "./ffmpeg.ts";
 import { screenFrames, screenImages, screenReply, screenRequest } from "./guard.ts";
@@ -50,6 +51,9 @@ const fatal = createFatal(watchdog);
 const VIDEO_QUEUE_DEPTH = 2;
 
 async function main(): Promise<void> {
+  // Before anything connects: every token gork sends goes over TLS checked against this store.
+  const distrusted = distrustRoots();
+  log(distrusted === null ? OLD_NODE_WARNING : `trust store: ${distrusted} distrusted root certificate(s) removed`);
   let cfg: Config;
   let budget: Budget;
   try {
