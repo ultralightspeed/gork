@@ -13,7 +13,7 @@ The screen is Cloudflare's Clef-Flash model. It looks for five kinds of content:
 
 - A blocked request earns the asker a strike. At 3 strikes in 24 hours, gork ignores that person until the strikes age out (`STRIKE_LIMIT`; `0` turns muting off). A strike counts only the asker's own words and images, not the message they replied to. Strikes are kept in memory, so a restart clears them.
 - For self-harm, gork does not answer. It sends a fixed, caring reply that points to a crisis line. A persona cannot change it.
-- The screen fails closed. If it is down or its answer cannot be read, gork posts nothing it wrote and says its safety check is down. If an image cannot be checked, the image is dropped and the reply says so.
+- The screen fails closed. If it is down or its answer cannot be read, gork posts nothing it wrote and says its safety check is down, or, when Workers AI's free daily allowance is what ran out, that it can't answer until 00:00 UTC. If an image cannot be checked, the image is dropped and the reply says so.
 
 The screen is not a full moderation system. It does not look for hate, harassment, misinformation, adult content between adults, or copyright problems. gork treats chat text and web pages as information to weigh, not as instructions, but no defense against prompt injection is perfect. You stay responsible for your server.
 

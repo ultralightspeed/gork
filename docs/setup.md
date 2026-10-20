@@ -76,7 +76,7 @@ Free mode uses only Cloudflare's free daily Workers AI allowance.
 - It is free only on the Workers Free plan. On Workers Paid, usage beyond the free allowance is billed by Cloudflare.
 - Expect about 25 to 100 replies a day. This is an estimate, not a promise. Long chats and tool use make a reply cost more of the allowance.
 - Web search is off. It needs credits.
-- When the day's allowance is used up, gork goes quiet until 00:00 UTC. The safety check runs on the same allowance, and gork will not answer when it cannot run the check. It says its safety check is down.
+- When the day's allowance is used up, gork answers nothing until 00:00 UTC. The safety check runs on the same allowance, and gork will not answer when it cannot run the check. Either way it says the free allowance is used up and when it resets.
 - It uses a smaller model, `@cf/zai-org/glm-4.7-flash`. Do not put a GLM 5.x model in `LLM_MODEL`. Those need the paid plan or credits, and `npm run doctor` warns about them.
 - That model can't see images. gork doesn't send it attached images or video frames, and tells it they were there; a video still gets its transcript.
 - Model calls go to Workers AI directly, not through the AI Gateway, so they can't use your credits. `LLM_BASE_URL` must stay empty or point at `api.cloudflare.com` (Workers AI direct). Anything else stops `npm run up` with a message.

@@ -54,4 +54,4 @@ A persona file has two parts. At the top is a block between two `---` lines, wit
 | `reply.no_event` | Added when an event was made but the person asking, or gork, cannot create events on the server. |
 | `reply.event_failed` | Sent when Discord refused to create the event. |
 
-Unknown keys are ignored and noted in the startup log. The self-harm reply, the "safety check is down" reply and the notes about a blocked image are fixed in code. A persona cannot change them.
+Unknown keys are ignored and noted in the startup log. The self-harm reply, the "safety check is down" and "free allowance used up" replies and the notes about a blocked image are fixed in code. A persona cannot change them.

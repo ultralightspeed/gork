@@ -23,6 +23,7 @@ const replies: Replies = {
   busy: "BUSY",
   error: "ERROR",
   guardDown: "GUARD_DOWN",
+  allowanceOut: "ALLOWANCE_OUT",
   imageBlocked: "IMAGE_BLOCKED",
   imageUnchecked: "IMAGE_UNCHECKED",
   empty: "EMPTY",
@@ -327,15 +328,18 @@ describe("respond: gates before any paid work", () => {
 });
 
 describe("respond: the request screen", () => {
-  it("fails closed when the screen is down, before the model is called", async () => {
+  it.each([
+    ["is down", new Error("guard timeout"), "GUARD_DOWN"],
+    ["has used up the free daily allowance", new FreeAllowanceError("used up"), "ALLOWANCE_OUT"],
+  ])("fails closed when the screen %s, before the model is called, and says which", async (_what, err, text) => {
     const { req, deps, calls } = setup({
       deps: {
         screenRequest: async () => {
-          throw new FreeAllowanceError("used up");
+          throw err;
         },
       },
     });
-    expect((await respond(req, deps))?.text).toBe("GUARD_DOWN");
+    expect((await respond(req, deps))?.text).toBe(text);
     expect(calls.answer).toBe(0);
   });
 
@@ -361,9 +365,9 @@ describe("respond: the request screen", () => {
 
 describe("respond: the answer and the reply screen", () => {
   it.each([
-    ["an error", new LlmError("HTTP 500", 0.004), 0.004],
-    ["the free allowance running out", new LlmError("LLM HTTP 429", 0.002, true), 0.002],
-  ])("settles the reservation in the ledger and posts the error reply after %s", async (_what, err, reserved) => {
+    ["an error", new LlmError("HTTP 500", 0.004), 0.004, "ERROR"],
+    ["the free allowance running out", new LlmError("LLM HTTP 429", 0.002, true), 0.002, "ALLOWANCE_OUT"],
+  ])("settles the reservation in the ledger and says what happened after %s", async (_what, err, reserved, text) => {
     const { req, deps } = setup({
       deps: {
         answer: async () => {
@@ -371,7 +375,7 @@ describe("respond: the answer and the reply screen", () => {
         },
       },
     });
-    expect((await respond(req, deps))?.text).toBe("ERROR");
+    expect((await respond(req, deps))?.text).toBe(text);
     expect(deps.budget.spentToday).toBeCloseTo(reserved + pass.costUsd, 8);
   });
 
@@ -413,6 +417,13 @@ describe("respond: the answer and the reply screen", () => {
         throw new Error("guard timeout");
       },
       "GUARD_DOWN",
+    ],
+    [
+      "can't be checked because the free allowance is used up",
+      async (): Promise<GuardVerdict> => {
+        throw new FreeAllowanceError("used up");
+      },
+      "ALLOWANCE_OUT",
     ],
   ])("posts nothing the model produced when the reply %s", async (_what, screenReply, text) => {
     const { req, deps } = setup({

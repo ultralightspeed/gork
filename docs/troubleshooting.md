@@ -50,7 +50,7 @@ After fixing it, run `npm run up`.
 - Mention the bot with a Discord mention (pick it from the list that pops up), not by typing its name.
 - Wait out the cooldown (3 seconds by default) between questions.
 - If gork says it is out of budget, it reached `DAILY_BUDGET_USD`. It resets at 00:00 UTC.
-- If gork says its safety check is down, look for a log line that starts with `guard`. Either the Cloudflare free allowance is used up, or the call failed.
+- If gork says its safety check is down, look for a log line that starts with `guard`: the call to the safety check failed. If it says the free allowance is used up, it will answer again after 00:00 UTC (or switch to credits mode).
 - If replies fail, check your Cloudflare credits. `npm run up` warns when the balance is $0.
 
 ## gork won't create events

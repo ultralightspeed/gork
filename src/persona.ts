@@ -5,7 +5,7 @@ import type { Replies } from "./respond.ts";
 import { formatLocalNow } from "./time.ts";
 
 /** Replies a persona may reword. The safety replies (self-harm, safety check down) stay in code. */
-type PersonaReplies = Omit<Replies, "selfHarm" | "guardDown" | "imageBlocked" | "imageUnchecked">;
+type PersonaReplies = Omit<Replies, "selfHarm" | "guardDown" | "allowanceOut" | "imageBlocked" | "imageUnchecked">;
 
 export type Persona = {
   name: string;
@@ -193,6 +193,8 @@ export const SAFETY_REPLIES = {
   selfHarm:
     "That sounds really heavy, and I'm not the right one to help with it. Please reach out to someone you trust or a local crisis line. In the US you can call or text 988 (Suicide & Crisis Lifeline).",
   guardDown: "My safety check is down right now, so I can't answer. Try again in a bit.",
+  allowanceOut:
+    "I've used up today's free Cloudflare AI allowance, so I can't answer until it resets at 00:00 UTC. (Whoever runs me can switch to credits mode to keep going.)",
   imageBlocked: "(I made an image, but the safety check blocked it, so I'm not posting it.)",
   imageUnchecked: "(I made an image, but my safety check couldn't look at it, so I'm not posting it.)",
 };

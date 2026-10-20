@@ -124,7 +124,7 @@ There is no telemetry, analytics or update check. Apart from the destinations a 
 - Every request (with the replied-to message, images, video frames and transcript) and every reply (with poll and event text, and each generated image) is screened by Cloudflare's Clef-Flash model before anything is posted. Check `screenRequest` and `screenReply` in `src/guard.ts`, and `respond` in `src/respond.ts`.
 - Invisible characters (zero-width and other Unicode format characters) are stripped from the text gork receives and posts before the safety screen and the model see it. Check `stripInvisible` in `src/context.ts`.
 - It fails closed: if the screen errors or answers in an unexpected shape, gork posts nothing it wrote. Check `yesProbability` in `src/guard.ts` and `test/guard.test.ts`, `test/respond.test.ts`.
-- Self-harm and "safety check is down" replies are fixed in code, not in personas. Check `SAFETY_REPLIES` in `src/persona.ts`.
+- Self-harm, "safety check is down" and "free allowance used up" replies are fixed in code, not in personas. Check `SAFETY_REPLIES` in `src/persona.ts`.
 - `npm run calibrate` runs a fixed set of requests through the live screen and prints each verdict.
 
 ## Supply chain

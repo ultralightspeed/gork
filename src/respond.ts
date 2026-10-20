@@ -22,7 +22,7 @@ import type { Attachment } from "./tools.ts";
 import type { VideoResult } from "./video.ts";
 import { type VideoWatch, videoOverview } from "./videolook.ts";
 
-/** The bot's fixed replies. Safety texts (selfHarm, guardDown) come from code; the rest can come from the persona. */
+/** The bot's fixed replies. Safety texts (selfHarm, guardDown, allowanceOut) come from code; the rest can come from the persona. */
 export type Replies = {
   blocked: string;
   selfHarm: string;
@@ -30,6 +30,8 @@ export type Replies = {
   busy: string;
   error: string;
   guardDown: string;
+  /** Workers AI's free daily allowance is used up: nothing works again until 00:00 UTC. */
+  allowanceOut: string;
   /** Appended when a generated image failed the safety screen, or couldn't be checked. */
   imageBlocked: string;
   imageUnchecked: string;
@@ -193,7 +195,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
     });
   } catch (err) {
     logGuardFailure(log, err);
-    return say(replies.guardDown);
+    return say(err instanceof FreeAllowanceError ? replies.allowanceOut : replies.guardDown);
   }
   budget.commit(0, pre.costUsd);
   if (pre.blocked) {
@@ -241,7 +243,10 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   } catch (err) {
     if (err instanceof LlmError) {
       budget.commit(err.reservedUsd, err.reservedUsd);
-      if (err.freeAllowance) log("model: Workers AI free allowance exhausted (no reply until 00:00 UTC)");
+      if (err.freeAllowance) {
+        log("model: Workers AI free allowance exhausted (no reply until 00:00 UTC)");
+        return say(replies.allowanceOut);
+      }
     }
     throw err;
   }
@@ -258,7 +263,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   } catch (err) {
     // Fail closed: nothing the model produced goes out when the reply screen is down.
     logGuardFailure(log, err);
-    return say(replies.guardDown);
+    return say(err instanceof FreeAllowanceError ? replies.allowanceOut : replies.guardDown);
   }
   budget.commit(0, post.costUsd);
   if (post.blocked) {

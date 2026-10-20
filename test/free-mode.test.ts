@@ -67,6 +67,7 @@ async function fullReply(env: Record<string, string>) {
       busy: "BUSY",
       error: "ERROR",
       guardDown: "GUARD_DOWN",
+      allowanceOut: "ALLOWANCE_OUT",
       imageBlocked: "IMAGE_BLOCKED",
       imageUnchecked: "IMAGE_UNCHECKED",
       empty: "EMPTY",
