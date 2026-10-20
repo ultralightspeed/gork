@@ -7,6 +7,17 @@ import { Budget } from "../src/budget.ts";
 const file = () => join(mkdtempSync(join(tmpdir(), "gork-")), "ledger.json");
 
 describe("Budget", () => {
+  it("keeps the cap when a cost is not a number: it counts the reservation as spent instead", () => {
+    const b = new Budget(file(), 0.01);
+    expect(b.tryReserve(0.004)).toBe(true);
+    b.commit(0.004, Number.NaN);
+    expect(b.spentToday).toBeCloseTo(0.004);
+    expect(b.tryReserve(0.007)).toBe(false);
+    expect(b.tryReserve(0.006)).toBe(true);
+    expect(b.tryReserve(Number.NaN)).toBe(false);
+    expect(b.tryReserve(0.0001)).toBe(false);
+  });
+
   it("counts what is reserved and what is spent against the cap, and rejects overshoot", () => {
     const b = new Budget(file(), 0.01);
     expect(b.tryReserve(0.006)).toBe(true);

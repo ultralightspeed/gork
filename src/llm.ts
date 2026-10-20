@@ -126,6 +126,10 @@ async function chat(
   }
 }
 
+/** A token count from the answer, or undefined when it is missing or not a usable number. */
+const tokenCount = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined;
+
 /**
  * Answers with the model, letting it call tools up to cfg.tools.maxCalls times, and only until the reply deadline
  * (REPLY_DEADLINE_SECONDS): after that, tools are off and the model must answer with what it has.
@@ -188,10 +192,15 @@ export async function answer(
         err instanceof ChatHttpError ? `LLM HTTP ${err.status}: ${err.body.slice(0, 160)}` : (err as Error).message;
       throw new LlmError(message, reserved, err instanceof ChatHttpError && err.freeAllowance);
     }
-    if (data.usage?.prompt_tokens === undefined || data.usage?.completion_tokens === undefined) estimated = true;
-    pt += data.usage?.prompt_tokens ?? estTokens(sent);
-    ct += data.usage?.completion_tokens ?? MAX_OUTPUT_TOKENS;
+    // The answer is only cast, not checked: a count that isn't a number counts as missing, so the cost stays a number.
+    const inTokens = tokenCount(data.usage?.prompt_tokens);
+    const outTokens = tokenCount(data.usage?.completion_tokens);
+    if (inTokens === undefined || outTokens === undefined) estimated = true;
+    pt += inTokens ?? estTokens(sent);
+    ct += outTokens ?? MAX_OUTPUT_TOKENS;
     const msg = data.choices?.[0]?.message ?? {};
+    if (msg.tool_calls != null && !Array.isArray(msg.tool_calls))
+      throw new LlmError(`${cfg.llm.model} sent tool_calls that is not a list`, reserved);
     const calls = toolsOn ? (msg.tool_calls ?? []) : [];
     if (calls.length === 0) return result(cleanText(msg.content));
     convo.push({ role: "assistant", content: typeof msg.content === "string" ? msg.content : "", tool_calls: calls });

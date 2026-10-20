@@ -415,6 +415,31 @@ describe("answer", () => {
     expect(r2.pingEveryone).toBe(false);
   });
 
+  it("treats usage that is not a number as missing, so the cost stays a number", async () => {
+    for (const usage of [
+      { prompt_tokens: "100", completion_tokens: 20 },
+      { prompt_tokens: {}, completion_tokens: null },
+    ]) {
+      const { f } = scripted([completion({ content: "hi" }, usage)]);
+      const r = await answer(cfg, msgs, { fetch: f, runTool: async () => ({ content: "", costUsd: 0 }), reserve: yes });
+      expect(r.usageEstimated).toBe(true);
+      expect(typeof r.promptTokens).toBe("number");
+      expect(Number.isFinite(r.costUsd)).toBe(true);
+    }
+  });
+
+  it("names the field and the model when tool_calls is not a list", async () => {
+    const { f } = scripted([completion({ content: null, tool_calls: { id: "x" } })]);
+    const err = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async () => ({ content: "", costUsd: 0 }),
+      reserve: yes,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err.message)).toContain("tool_calls");
+    expect(String(err.message)).toContain(cfg.llm.model);
+  });
+
   it("charges max output tokens when usage is missing", async () => {
     const { f } = scripted([completion({ content: "hi" }, null)]);
     const r = await answer(cfg, msgs, { fetch: f, runTool: async () => ({ content: "", costUsd: 0 }), reserve: yes });

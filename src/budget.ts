@@ -36,6 +36,8 @@ export class Budget {
 
   tryReserve(usd: number): boolean {
     this.roll();
+    // NaN would pass the comparison below and then poison the ledger, so an amount that isn't a number is refused.
+    if (!(usd >= 0) || !Number.isFinite(usd)) return false;
     if (this.spent + this.reserved + usd > this.cap) return false;
     this.reserved += usd;
     return true;
@@ -44,7 +46,10 @@ export class Budget {
   commit(reservedUsd: number, actualUsd: number): void {
     this.roll();
     this.reserved = Math.max(0, this.reserved - reservedUsd);
-    this.spent += actualUsd;
+    // A cost that isn't a number would make spent NaN, and every later tryReserve would pass: count the reservation.
+    if (!(actualUsd >= 0) || !Number.isFinite(actualUsd))
+      this.warn("a cost was not a number; counted its reservation instead");
+    this.spent += actualUsd >= 0 && Number.isFinite(actualUsd) ? actualUsd : reservedUsd;
     this.persist();
   }
 
