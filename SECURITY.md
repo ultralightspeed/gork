@@ -16,7 +16,7 @@ Please include:
 - The steps to reproduce it, with the settings you used (names and values, but never your tokens).
 - The version or commit you tested.
 
-You will get a reply as soon as the maintainers can. Please give us a reasonable time to fix the problem before you share it.
+gork has one maintainer, who will reply as soon as they can; there is no promised response time. Please allow a reasonable time for a fix before you share the problem.
 
 ## Never post secrets
 
@@ -50,7 +50,7 @@ If you pasted a secret anywhere public, treat it as leaked. Reset or delete it r
 
   If that risk is too much for your server, set `VIDEOS_PER_DAY=0`.
 
-- FFmpeg, OpenSSL, LAME and dav1d are built from source, so no package scanner sees them. Their versions are labelled on the image (`org.gork.ffmpeg` and the like) and are updated by hand, at least once a month and whenever one of them has a security release.
+- FFmpeg, OpenSSL, LAME and dav1d are built from source, so no package scanner sees them. Their versions are labelled on the image (`org.gork.ffmpeg` and the like), so you can check what you run. They are updated by hand, in a new release, when one of them has a security fix that affects gork.
 
 ## What is out of scope
 
@@ -66,4 +66,4 @@ If you pasted a secret anywhere public, treat it as leaked. Reset or delete it r
 
 ## Supported versions
 
-Only the latest commit on the default branch gets fixes.
+Only the latest release gets fixes. Security fixes come out as a new release; [Updating gork](docs/setup.md#updating-gork) says how to get it and how to be told when one appears.

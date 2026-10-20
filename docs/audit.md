@@ -151,7 +151,7 @@ To compare an image with the source, build it yourself with `npm run up -- --bui
 
 ## Limits
 
-- gork has a single maintainer and a new account, and has had no independent security audit.
+- gork has a single maintainer and has had no independent security audit.
 - The safety screen is a classifier. It reduces harmful output; it is not access control, and it covers only five categories (see [behavior.md](behavior.md#safety)).
 - Cloudflare processes all content it receives: prompts, recent channel messages, images, video frames and transcripts.
 - ffmpeg runs in the same container as the bot, as the same user. A code-execution bug in ffmpeg, triggered by a crafted video, could read the bot's tokens. [SECURITY.md](../SECURITY.md) lists the limits gork puts on it, and `VIDEOS_PER_DAY=0` turns video off.
