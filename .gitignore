@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+node_modules/
+data/
+*.log
+*.tmp
+.claude/
+.superpowers/
+
+# Your own personas (personas/custom.md or any other new file there). Never committed; mounted into the container.
+personas/*
+!personas/default.md
+!personas/hype.md
+!personas/noir.md
+!personas/professor.md
+!personas/witty.md
+!personas/custom.example.md
+coverage/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

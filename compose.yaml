@@ -1,0 +1,72 @@
+services:
+  gork:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    # The image's user, repeated, so even an image named in GORK_IMAGE can't run as root.
+    user: "1000:1000"
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Room for ffmpeg decoding a video (up to about 1080p) next to Node. ffmpeg writes no files, so /tmp stays small.
+    mem_limit: 384m
+    memswap_limit: 384m
+    # One CPU is plenty for a chat bot plus a single-threaded ffmpeg; 128 processes is far above what node, its helper
+    # threads and one ffmpeg need, and low enough to stop a fork bomb.
+    cpus: "1.0"
+    pids_limit: 128
+    # Outbound-only bot: the default bridge is enough, and it avoids allocating a new Docker network.
+    network_mode: bridge
+    # The Dockerfile's HEALTHCHECK, repeated: an image built by Podman's default (OCI) format drops HEALTHCHECK, so
+    # without this the container would never be checked. test/dockerfile.test.ts keeps the two identical.
+    healthcheck:
+      test: ["CMD", "node", "src/healthcheck.ts"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    # Explicit list (test/env-sync.test.ts checks it against src/config.ts). Left out on purpose: CF_ADMIN_TOKEN, which
+    # must never enter the container, and DATA_DIR, which the Dockerfile fixes at /data (the only writable path).
+    environment:
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      GUILD_IDS: ${GUILD_IDS}
+      ALLOWED_CHANNEL_IDS: ${ALLOWED_CHANNEL_IDS:-}
+      PERSONA: ${PERSONA:-}
+      MENTIONS: ${MENTIONS:-}
+      TIMEZONE: ${TIMEZONE:-}
+      CF_ACCOUNT_ID: ${CF_ACCOUNT_ID}
+      AI_GATEWAY_ID: ${AI_GATEWAY_ID:-}
+      CF_RUN_TOKEN: ${CF_RUN_TOKEN}
+      BILLING_MODE: ${BILLING_MODE:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-}
+      LLM_PRICE_IN_PER_M: ${LLM_PRICE_IN_PER_M:-}
+      LLM_PRICE_OUT_PER_M: ${LLM_PRICE_OUT_PER_M:-}
+      MAX_TOOL_CALLS: ${MAX_TOOL_CALLS:-}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      FETCH_MAX_CHARS: ${FETCH_MAX_CHARS:-}
+      TRANSCRIPT_MAX_CHARS: ${TRANSCRIPT_MAX_CHARS:-}
+      IMAGES_PER_DAY: ${IMAGES_PER_DAY:-}
+      VIDEOS_PER_DAY: ${VIDEOS_PER_DAY:-}
+      GUARD_BLOCK: ${GUARD_BLOCK:-}
+      GUARD_THRESHOLD: ${GUARD_THRESHOLD:-}
+      STRIKE_LIMIT: ${STRIKE_LIMIT:-}
+      DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-}
+      COOLDOWN_SECONDS: ${COOLDOWN_SECONDS:-}
+      CONTEXT_MESSAGES: ${CONTEXT_MESSAGES:-}
+    # The persona file's SHA-256, set by npm run up. When it changes, compose up recreates the container, so the bot
+    # starts again on the edited persona.
+    labels:
+      gork.persona-sha: ${GORK_PERSONA_SHA:-}
+    volumes:
+      - gork-data:/data
+      # Presets plus your own personas/custom.md (gitignored), read-only.
+      - ./personas:/app/personas:ro
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+volumes:
+  gork-data:

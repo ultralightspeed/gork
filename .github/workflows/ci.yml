@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push cancels the run in progress. The secret scan is in secret-scan.yml, outside this group, so a cancelled
+# run here never leaves a commit unscanned.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (typecheck, biome, vitest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --no-fund --no-audit
+      - run: npm run check
+
+  cli-without-install:
+    name: the CLI runs without npm install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # The README says no npm install is needed to run the setup CLI: on a clean checkout it must start and print its usage.
+      - name: scripts/gork.ts prints its usage with no node_modules
+        run: |
+          test ! -e node_modules
+          status=0
+          out=$(node scripts/gork.ts 2>&1) || status=$?
+          echo "$out"
+          test "$status" -eq 1
+          grep -q '^gork: usage: npm run up | down' <<< "$out"

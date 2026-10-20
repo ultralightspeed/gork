@@ -1,0 +1,31 @@
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules
+data
+docs
+test
+*.md
+# Only the shipped personas go into the image (test/dockerfile.test.ts lists them). Your own, personas/custom.md or any
+# other file there, is mounted at run time (compose.yaml) and never baked in.
+personas/*
+!personas/default.md
+!personas/hype.md
+!personas/noir.md
+!personas/professor.md
+!personas/witty.md
+!personas/custom.example.md
+scripts
+.claude
+.superpowers
+.github
+coverage
+**/*.log
+**/*.tmp
+**/.DS_Store
+**/Thumbs.db
+# Only the avatar is used at run time (src/index.ts).
+assets/*
+!assets/gork.png

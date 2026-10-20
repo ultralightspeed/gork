@@ -1,0 +1,40 @@
+{
+  "name": "gork",
+  "version": "0.1.0",
+  "description": "A Discord bot that answers @mentions with a model on Cloudflare Workers AI, with a safety screen and a daily spend cap.",
+  "license": "0BSD",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "check-secrets": "node scripts/check-secrets.ts",
+    "up": "node --env-file-if-exists=.env scripts/gork.ts up",
+    "down": "node --env-file-if-exists=.env scripts/gork.ts down",
+    "destroy": "node --env-file-if-exists=.env scripts/gork.ts destroy",
+    "logs": "node --env-file-if-exists=.env scripts/gork.ts logs",
+    "status": "node --env-file-if-exists=.env scripts/gork.ts status",
+    "gateway": "node --env-file-if-exists=.env scripts/gork.ts gateway",
+    "doctor": "node --env-file-if-exists=.env scripts/gork.ts doctor",
+    "setup": "node scripts/gork.ts setup",
+    "env-example": "node scripts/env-example.ts",
+    "probe": "node --env-file-if-exists=.env scripts/probe.ts",
+    "calibrate": "node --env-file-if-exists=.env scripts/calibrate.ts",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "npm run typecheck && npm run lint && npm run check-secrets && npm test"
+  },
+  "dependencies": {
+    "discord.js": "14.27.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.4"
+  }
+}

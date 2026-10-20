@@ -1,0 +1,176 @@
+name: Image
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Where scripts/lib/image.ts (IMAGE_REPO) looks for it: always <owner>/gork, so the image keeps the name gork even if
+  # this repository is renamed. GHCR needs the name in lowercase.
+  IMAGE: ghcr.io/${{ github.repository_owner }}/gork
+
+jobs:
+  # Nothing is published unless the code passes its own checks (CI runs them too, but a separate workflow can't gate this one).
+  check:
+    name: check (typecheck, biome, vitest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: the tag matches the package.json version
+        # npm run up pulls the image tagged with package.json's version, so a release tag must match it.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "v$(node -p "require('./package.json').version")" = "$TAG"
+      - run: npm ci --no-fund --no-audit
+      - run: npm run check
+
+  # One native build per architecture (no QEMU: the ffmpeg stage compiles C, which is far too slow emulated). Each leg
+  # pushes its image by digest only; the merge job below puts the two under the release tags. A leg also runs the
+  # ffmpeg stage's capability and certificate check (docker/check-ffmpeg.sh) on its own architecture.
+  build:
+    name: build and push by digest (${{ matrix.platform }})
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # the attestation step's signing identity (Sigstore, via GitHub's OIDC token)
+      attestations: write # storing that attestation with GitHub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # No tags here: the image is addressed by digest until the merge job tags the pair. Layers are zstd level 19
+          # (smaller pulls than gzip; Docker 23+, containerd and Podman read them; OCI media types are required for it).
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=19,force-compression=true,oci-mediatypes=true
+          # No BuildKit attestations: its provenance embeds the whole GitHub event (the pusher's email included) in the
+          # image and the build log. Provenance comes from the GitHub attestation step below instead.
+          provenance: false
+          sbom: false
+          # No cache: the release builds every layer itself.
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
+      # Run the image just pushed, on its own architecture, before it is attested and tagged.
+      - name: The pushed image starts
+        env:
+          REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker run --rm --entrypoint ffmpeg "$REF" -hide_banner -version | head -n 1
+          docker run --rm --read-only --user 1000:1000 --cap-drop ALL --tmpfs /tmp "$REF" \
+            node --input-type=module -e "await import('discord.js')"
+      # Signed build provenance for this architecture's image, stored with GitHub (see the merge job for how to verify).
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+      - name: Keep the digest for the merge job
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Anyone can check that a published image was built by this workflow from the release tag:
+  #   gh attestation verify oci://ghcr.io/ultralightspeed/gork:<version> --repo ultralightspeed/gork --signer-workflow ultralightspeed/gork/.github/workflows/image.yml --source-ref refs/tags/v<version>
+  # The multi-arch tag resolves to the manifest list, attested here; each architecture's image is attested by its build.
+  merge:
+    name: publish the multi-arch tags
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # the attestation step's signing identity (Sigstore, via GitHub's OIDC token)
+      attestations: write # storing that attestation with GitHub
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # flavor latest=auto (the default): `latest` is added for stable semver tags only, never for prereleases.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+      # The digest attested below is the one this push reported, so a tag moved in between can't change what is attested.
+      - name: Create the manifest list and push it under the tags
+        id: create
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          # shellcheck disable=SC2046  # word splitting of the -t flags and the digests is the point
+          docker buildx imagetools create --metadata-file "$RUNNER_TEMP/create.json" \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+          digest=$(jq -r '."containerimage.descriptor".digest' "$RUNNER_TEMP/create.json")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.create.outputs.digest }}

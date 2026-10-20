@@ -1,0 +1,73 @@
+name: Image check
+
+# Builds the image and checks it, but only when something that goes into it changes: compiling ffmpeg from source
+# takes about 13 minutes on GitHub's runners, so it should not run on every docs or code-only push.
+on:
+  push:
+    paths:
+      - Dockerfile
+      - docker/**
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .github/workflows/image-check.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - docker/**
+      - .dockerignore
+      - package.json
+      - package-lock.json
+      - .github/workflows/image-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: image builds (linux/${{ matrix.arch }}, nothing pushed)
+    strategy:
+      matrix:
+        # Arm runners are free only for public repositories, so arm64 is built once the repository is public.
+        arch: ${{ fromJSON(github.event.repository.private && '["amd64"]' || '["amd64", "arm64"]') }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.0@sha256:b059f8d7226d0b326bc871af489a5dddf65e36af4d20d14251b072974d9ee87c
+      # The build itself runs docker/check-ffmpeg.sh in the ffmpeg stage: codecs and protocols present, nothing else,
+      # and certificates and host names really checked. A failure there fails this job.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          push: false
+          tags: gork:ci
+          # No BuildKit provenance: it embeds the whole GitHub event (the pusher's email included) in the build log.
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          # Save the layers (the from-source ffmpeg stage takes about 13 minutes), so later runs reuse them.
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+          DOCKER_BUILD_SUMMARY: false
+      - name: the image has what it needs and nothing more
+        run: |
+          docker run --rm --entrypoint ffmpeg gork:ci -hide_banner -version | head -n 1
+          docker run --rm --read-only --user 1000:1000 --cap-drop ALL --tmpfs /tmp gork:ci \
+            node --input-type=module -e "await import('discord.js'); console.log('discord.js loads')"
+          if docker run --rm --entrypoint sh gork:ci -c true 2>/dev/null; then echo "the image has a shell" >&2; exit 1; fi
+          size=$(docker image inspect gork:ci --format '{{.Size}}')
+          echo "image size: $size bytes"
+          # A budget, not a target (the image is about 200 MB): a jump past it should be a decision, not an accident.
+          test "$size" -lt 250000000

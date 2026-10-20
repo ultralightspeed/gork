@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Set up gork</title>
+<style nonce="{{NONCE}}">
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --ink: #1b1f27;
+  --muted: #566070;
+  --line: #d5dae2;
+  --accent: #3b4fd8;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8ebfd;
+  --ok: #176b3a;
+  --ok-soft: #e3f4e9;
+  --warn: #8a5300;
+  --warn-soft: #fff1d6;
+  --bad: #a3202d;
+  --bad-soft: #fde8ea;
+  --focus: #1a3fd0;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --card: #1d2128;
+    --ink: #eceff4;
+    --muted: #a3adbd;
+    --line: #353c48;
+    --accent: #8c9bff;
+    --accent-ink: #11142b;
+    --accent-soft: #272d52;
+    --ok: #6fd698;
+    --ok-soft: #173424;
+    --warn: #f1b857;
+    --warn-soft: #3a2b10;
+    --bad: #ff8d98;
+    --bad-soft: #401a1f;
+    --focus: #b3beff;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1.0625rem/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: 46rem; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+h1 { font-size: 1.9rem; line-height: 1.2; margin: 0.5rem 0 0.4rem; }
+h2 { font-size: 1.3rem; line-height: 1.25; margin: 0; }
+h3 { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; }
+p { margin: 0.5rem 0; }
+.lead { color: var(--muted); margin-bottom: 1.2rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.93rem; }
+a { color: var(--accent); }
+code { font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--accent-soft); padding: 0.1em 0.35em; border-radius: 5px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+[hidden] { display: none !important; }
+
+/* progress */
+.progress { display: flex; gap: 0.5rem; list-style: none; padding: 0; margin: 0 0 1.2rem; flex-wrap: wrap; }
+.progress li { flex: 1 1 9rem; border: 2px solid var(--line); border-radius: 999px; padding: 0.35rem 0.8rem; font-size: 0.95rem; color: var(--muted); background: var(--card); display: flex; align-items: center; gap: 0.5rem; }
+.progress .dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid var(--line); display: inline-grid; place-items: center; font-size: 0.85rem; font-weight: 700; flex: none; }
+.progress li[data-state="active"] { border-color: var(--accent); color: var(--ink); }
+.progress li[data-state="active"] .dot { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.progress li[data-state="done"] { border-color: var(--ok); color: var(--ink); }
+.progress li[data-state="done"] .dot { border-color: var(--ok); background: var(--ok); color: var(--card); }
+
+/* cards */
+.card { background: var(--card); border: 2px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.1rem 1.25rem; margin: 0 0 1rem; }
+.card[data-state="active"] { border-color: var(--accent); }
+.card[data-state="locked"] { opacity: 0.6; }
+.card-head { display: flex; align-items: center; gap: 0.7rem; }
+.card-head h2:focus { outline: none; }
+.num { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; background: var(--accent-soft); color: var(--accent); flex: none; }
+.card[data-state="done"] .num { background: var(--ok); color: var(--card); }
+.card .body, .card .summary, .card .locked-note { margin-top: 0.7rem; }
+.card[data-state="locked"] .body, .card[data-state="done"] .body { display: none; }
+.card:not([data-state="locked"]) .locked-note { display: none; }
+.card:not([data-state="done"]) .summary { display: none; }
+
+/* forms */
+fieldset { border: 0; padding: 0; margin: 1.2rem 0 0; min-width: 0; }
+/* One fieldset around the steps: disabling it disables every control inside, whatever state each was in. */
+.guard { margin: 0; }
+.lost { position: sticky; top: 0.5rem; z-index: 5; }
+.lost p { margin: 0.2rem 0; }
+legend { font-weight: 700; padding: 0; margin-bottom: 0.4rem; }
+.choice { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.7rem 0.8rem; border: 2px solid var(--line); border-radius: 12px; margin: 0.45rem 0; cursor: pointer; }
+.choice:hover { border-color: var(--accent); }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { width: 1.3rem; height: 1.3rem; margin: 0.2rem 0 0; flex: none; accent-color: var(--accent); }
+.choice b { display: block; }
+.choice span { color: var(--muted); font-size: 0.95rem; }
+.choice.sub { margin-left: 1.6rem; }
+label.field { display: block; font-weight: 700; margin-top: 1rem; }
+.input-row { display: flex; gap: 0.5rem; margin-top: 0.35rem; flex-wrap: wrap; }
+input[type="text"], input[type="password"], input[type="number"] {
+  flex: 1 1 14rem; min-width: 0; min-height: 3rem; padding: 0.55rem 0.8rem; font: inherit; color: var(--ink);
+  background: var(--bg); border: 2px solid var(--line); border-radius: 10px;
+}
+input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea {
+  display: block; width: 100%; min-height: 12rem; margin-top: 0.35rem; padding: 0.6rem 0.8rem; font: inherit; line-height: 1.45; color: var(--ink);
+  background: var(--bg); border: 2px solid var(--line); border-radius: 10px; resize: vertical;
+}
+textarea:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.editor { margin: 0.6rem 0 0.2rem; padding: 0.2rem 1rem 1rem; border: 2px solid var(--accent); border-radius: 12px; background: var(--card); }
+.rate { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+.rate input { flex: 0 0 6rem; }
+.token { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1rem; }
+.hint { min-height: 1.5rem; font-size: 0.95rem; margin: 0.35rem 0 0; color: var(--muted); }
+.hint[data-level="ok"] { color: var(--ok); }
+.hint[data-level="bad"] { color: var(--bad); }
+
+/* buttons */
+button, .button {
+  font: inherit; font-weight: 700; min-height: 3rem; padding: 0.6rem 1.2rem; border-radius: 10px; cursor: pointer;
+  border: 2px solid var(--accent); background: var(--card); color: var(--accent); text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+}
+button.primary, .button.primary { background: var(--accent); color: var(--accent-ink); }
+button.big { min-height: 3.6rem; font-size: 1.2rem; padding: 0.8rem 1.6rem; }
+button.quiet { border-color: var(--line); color: var(--muted); font-weight: 600; }
+button.link { border: 0; background: none; min-height: 0; padding: 0.2rem 0.1rem; color: var(--accent); text-decoration: underline; font-weight: 600; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button[aria-busy="true"]::after { content: ""; width: 1em; height: 1em; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { button[aria-busy="true"]::after, .spin { animation: none; } }
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 1rem; }
+
+/* messages */
+.error, .notice, .good, .warnbox { border-radius: 10px; padding: 0.65rem 0.85rem; margin: 0.8rem 0; border: 2px solid; font-size: 1rem; overflow-wrap: anywhere; }
+.error { background: var(--bad-soft); border-color: var(--bad); color: var(--ink); }
+.notice { background: var(--accent-soft); border-color: var(--accent); }
+.good { background: var(--ok-soft); border-color: var(--ok); }
+.warnbox { background: var(--warn-soft); border-color: var(--warn); }
+.editor .notice { margin-top: 0.9rem; }
+.steps-list { padding-left: 1.4rem; margin: 0.5rem 0; }
+.steps-list li { margin: 0.45rem 0; padding-left: 0.2rem; }
+.checks { list-style: none; padding: 0; margin: 0.6rem 0; }
+.checks li { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.4rem 0; overflow-wrap: anywhere; }
+.checks .mark { font-weight: 800; width: 1.4rem; flex: none; text-align: center; }
+.checks .ok { color: var(--ok); }
+.checks .bad { color: var(--bad); }
+.checks .warn { color: var(--warn); }
+.checks .wait { color: var(--muted); }
+.work-head { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.4rem; }
+.spin { width: 1.1em; height: 1.1em; flex: none; border: 3px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.9s linear infinite; }
+.work .checks { margin: 0.3rem 0 0; }
+.checks .todo { color: var(--muted); opacity: 0.7; }
+.panel { border-top: 2px solid var(--line); margin-top: 1.4rem; padding-top: 0.2rem; }
+pre { background: var(--bg); border: 2px solid var(--line); border-radius: 10px; padding: 0.7rem; overflow: auto; max-height: 14rem; font: 0.85rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+details { margin-top: 0.9rem; }
+summary { cursor: pointer; font-weight: 600; }
+details.advanced { border: 2px solid var(--line); border-radius: 12px; padding: 0.7rem 0.9rem; margin-top: 1.2rem; }
+details.more { margin: 0.2rem 0 0; }
+details.more summary { font-size: 0.93rem; color: var(--muted); }
+footer { margin-top: 2rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; color: var(--muted); font-size: 0.93rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.big-online { text-align: center; padding: 1.2rem 0.5rem; }
+.big-online h3 { font-size: 1.6rem; margin: 0 0 0.4rem; }
+@media (max-width: 30rem) {
+  h1 { font-size: 1.6rem; }
+  .choice.sub { margin-left: 0.6rem; }
+  button, .button { width: 100%; }
+  .input-row button { width: auto; flex: 1 1 6rem; }
+  .progress li { flex: 1 1 calc(50% - 0.5rem); }
+  button.link { width: auto; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Set up gork</h1>
+  <p class="lead">gork is a Discord bot. This page gets it running. You do a few small things (click a button, copy a code, paste it here) and setup does the rest. It takes about 10 minutes. Your tokens go only to Discord and Cloudflare, and into .env on this computer.</p>
+
+  <noscript><p class="error">This page needs JavaScript to work. Turn it on for this page and reload.</p></noscript>
+
+  <div id="lost-banner" role="alert" class="error lost" hidden>
+    <p><b>This setup page has closed. Run <code>npm run setup</code> again, or use the newest setup tab.</b></p>
+    <p class="small">If setup stopped (you pressed Ctrl+C, or it sat unused for 30 minutes), it took back anything it had made and not kept. Nothing on this page works until setup is back. This page keeps checking and clears this message if setup comes back.</p>
+  </div>
+  <div id="banner" role="alert" class="error" hidden></div>
+
+  <ol class="progress" id="progress" aria-label="Your progress">
+    <li data-step="choices"><span class="dot" aria-hidden="true">1</span><span>Your choices</span></li>
+    <li data-step="discord"><span class="dot" aria-hidden="true">2</span><span>Discord</span></li>
+    <li data-step="cloudflare"><span class="dot" aria-hidden="true">3</span><span>Cloudflare</span></li>
+    <li data-step="finish"><span class="dot" aria-hidden="true">4</span><span>Start</span></li>
+  </ol>
+
+  <fieldset id="guard" class="guard">
+  <main id="main">
+
+  <!-- 1. choices -->
+  <section class="card" id="card-choices" aria-labelledby="h-choices">
+    <div class="card-head"><span class="num" aria-hidden="true">1</span><h2 id="h-choices" tabindex="-1">Your choices</h2></div>
+    <p class="summary" id="choices-summary" role="status"></p>
+    <p class="summary warnbox" id="custom-warnings-summary" role="status" hidden></p>
+    <p class="summary" id="choices-change-row"><button type="button" class="link" id="choices-change">Change the choices</button></p>
+    <p class="locked-note muted">Waiting.</p>
+    <form class="body" id="choices-form" novalidate>
+      <fieldset>
+        <legend>How should gork pay for its AI?</legend>
+        <label class="choice"><input type="radio" name="billing" value="credits" checked>
+          <div><b>Credits (recommended)</b><span>You add prepaid credit at Cloudflare (at least $10, which lasts a long time). Everything works, including web search, and gork stops for the day at your daily budget.</span></div></label>
+        <label class="choice"><input type="radio" name="billing" value="free">
+          <div><b>Free</b><span>Cloudflare's free daily allowance: roughly 25 to 100 replies a day, no web search, and a smaller AI model that can't see images. It is only free on the Workers Free plan; on Workers Paid, use past the allowance is billed.</span></div></label>
+        <details class="more">
+          <summary>More about Free</summary>
+          <p class="muted small">The allowance is about 10,000 &ldquo;neurons&rdquo; a day (Cloudflare's unit of AI work) and starts again at 00:00 UTC. When it runs out, gork stops answering until then. On Workers Paid, each 1,000 neurons past it costs $0.011.</p>
+        </details>
+      </fieldset>
+
+      <details id="advanced" class="advanced">
+        <summary>Advanced: personality, pings, time zone and budget</summary>
+        <p class="muted small">Left alone, gork uses the default personality, pings no one and uses this browser's time zone. With credits, it stops for the day at $0.50.</p>
+
+        <fieldset>
+          <legend>What should gork be like?</legend>
+          <div id="persona-list"></div>
+          <div id="custom-editor" class="editor" hidden>
+            <p class="notice" id="custom-exists" role="status" hidden>You already have a custom personality (<code>personas/custom.md</code>): saving replaces it.</p>
+            <label class="field" for="custom-name">Name <span class="muted small">(what gork calls itself)</span></label>
+            <div class="input-row"><input type="text" id="custom-name" maxlength="32" autocomplete="off" spellcheck="false" aria-describedby="custom-name-hint"></div>
+            <p class="hint" id="custom-name-hint" aria-live="polite"></p>
+            <label class="field" for="custom-body">How should gork talk and behave?</label>
+            <p class="muted small">Say who gork is, how it talks (short or long, slang, emoji) and what its humor is like. A few lines is enough. Write <code>{name}</code> wherever gork's name should go. Don't repeat gork's built-in rules (accuracy, safety, length): it adds those itself.</p>
+            <textarea id="custom-body" rows="12" maxlength="8000" aria-describedby="custom-body-count"></textarea>
+            <p class="hint" id="custom-body-count"></p>
+            <label class="field" for="custom-quirk">Quirk <span class="muted small">(optional)</span></label>
+            <p class="muted small">One extra instruction that gork follows on some replies, for example &ldquo;After the answer, add one short jab in character.&rdquo;</p>
+            <div class="input-row"><input type="text" id="custom-quirk" maxlength="300" autocomplete="off"></div>
+            <label class="field" for="custom-rate">How often does the quirk happen?</label>
+            <div class="rate"><input type="number" id="custom-rate" min="0" max="100" step="1" value="30" inputmode="numeric"><span aria-hidden="true">% of replies</span></div>
+            <details id="custom-replies">
+              <summary>Fixed replies</summary>
+              <p class="muted small">gork sends these fixed lines when something happens that doesn't need the AI. Leave a box empty to use gork's own wording (shown in grey). Safety messages can't be changed.</p>
+              <div id="reply-list"></div>
+            </details>
+            <ul class="checks" id="custom-warnings" hidden></ul>
+          </div>
+          <p class="muted small">You can change this later in the <code>.env</code> file.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Who may gork ping?</legend>
+          <p class="muted small">A ping (an @mention) sends someone a notification. gork pings no one unless you allow it.</p>
+          <label class="choice"><input type="radio" name="pings" value="none" checked>
+            <div><b>No one (recommended)</b><span>gork never pings anyone.</span></div></label>
+          <label class="choice"><input type="radio" name="pings" value="some">
+            <div><b>Only some kinds</b><span>Tick below what gork may ping.</span></div></label>
+          <label class="choice sub"><input type="checkbox" name="kind" value="reply" disabled>
+            <div><b>The person who asked</b><span>When it replies to them.</span></div></label>
+          <label class="choice sub"><input type="checkbox" name="kind" value="users" disabled>
+            <div><b>People in the conversation</b><span>By name, at most 5 in one reply.</span></div></label>
+          <label class="choice sub"><input type="checkbox" name="kind" value="roles" disabled>
+            <div><b>Server roles</b><span>Only roles the person asking could ping themselves.</span></div></label>
+          <label class="choice sub"><input type="checkbox" name="kind" value="everyone" disabled>
+            <div><b>@everyone and @here</b><span>Only when the person asking could do it themselves and gork decides it is needed. This adds the Mention Everyone permission to the invite.</span></div></label>
+        </fieldset>
+
+        <label class="field" for="timezone">Your time zone</label>
+        <p class="muted small">gork uses it when someone asks it to make a Discord event (&ldquo;Friday 8pm&rdquo;). It starts as the one your browser reports.</p>
+        <div class="input-row"><input type="text" id="timezone" list="zones" autocomplete="off" spellcheck="false" placeholder="for example America/New_York"></div>
+        <datalist id="zones"></datalist>
+
+        <div id="budget-box">
+          <label class="field" for="budget">Daily budget in US dollars</label>
+          <p class="muted small">gork stops answering for the day when its own cost estimate reaches this. Setup also sets a spending limit of about 1.2 times this at Cloudflare as a backstop.</p>
+          <div class="input-row"><input type="text" id="budget" inputmode="decimal" autocomplete="off" value="0.50"></div>
+        </div>
+      </details>
+
+      <p class="error" id="err-choices" role="alert" hidden></p>
+      <div class="actions"><button type="submit" class="primary big" id="btn-choices">Continue</button></div>
+    </form>
+  </section>
+
+  <!-- 2. discord -->
+  <section class="card" id="card-discord" aria-labelledby="h-discord">
+    <div class="card-head"><span class="num" aria-hidden="true">2</span><h2 id="h-discord" tabindex="-1">Connect Discord</h2></div>
+    <p class="summary" id="discord-summary" role="status"></p>
+    <p class="locked-note muted">Finish step 1 first.</p>
+    <div class="body">
+
+      <div id="d-token-part">
+        <h3>Make the gork bot</h3>
+        <p><a class="button primary" id="open-discord" href="https://discord.com/developers/applications?new_application=true" target="_blank" rel="noopener noreferrer">Open the Discord Developer Portal</a></p>
+        <ol class="steps-list">
+          <li>In the page that opens (log in to Discord if it asks), name the app <b>gork</b> and click <b>Create</b>.</li>
+          <li>In the menu on the left click <b>Bot</b>. Click <b>Reset Token</b> (Discord may ask for a code from your phone), then click <b>Copy</b>.</li>
+          <li>Come back to this tab and paste the token below.</li>
+        </ol>
+        <label class="field" for="discord-token">Bot token</label>
+        <div class="input-row">
+          <input type="password" id="discord-token" class="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore aria-describedby="discord-hint">
+          <button type="button" class="quiet" id="discord-paste">Paste</button>
+          <button type="button" class="quiet" id="discord-show" aria-pressed="false" aria-controls="discord-token">Show</button>
+        </div>
+        <p class="hint" id="discord-hint" aria-live="polite"></p>
+        <p class="muted small">The token is like a password for the bot. It goes only to Discord, and into .env on this computer. This page never shows it back.</p>
+        <p class="error" id="err-discord" role="alert" hidden></p>
+        <div class="actions"><button type="button" class="primary" id="btn-discord-token">Check the token</button></div>
+      </div>
+      <div class="work notice" id="work-discord" hidden>
+        <p class="work-head"><span class="spin" aria-hidden="true"></span><b>Checking with Discord…</b></p>
+        <ul class="checks" id="work-discord-list" aria-busy="true"></ul>
+        <p class="visually-hidden" role="status" id="work-discord-say"></p>
+      </div>
+
+      <div id="d-connected" class="good" hidden role="status"></div>
+      <div id="d-intent" class="warnbox" hidden></div>
+
+      <div id="d-invite" class="panel" hidden>
+        <h3>Add gork to your server</h3>
+        <p>Click the button, choose your server in the list, and click <b>Authorize</b>. (You need permission to manage that server.)</p>
+        <p><a class="button primary" id="open-invite" href="https://discord.com/oauth2/authorize" target="_blank" rel="noopener noreferrer">Add gork to a server</a></p>
+        <p class="notice" role="status" id="invite-status">Waiting for gork to join. Setup checks every few seconds and shows your server here.</p>
+        <div id="d-guilds" hidden>
+          <fieldset><legend>Which server should gork answer in?</legend><div id="guild-list"></div></fieldset>
+          <p class="muted small">To use gork in more than one server later, add their IDs to <code>GUILD_IDS</code> in the <code>.env</code> file.</p>
+          <p class="error" id="err-guilds" role="alert" hidden></p>
+          <div class="actions"><button type="button" class="primary" id="btn-guild" disabled>Use this server</button></div>
+        </div>
+        <details id="d-manual">
+          <summary>gork joined but isn't listed? Enter the server ID yourself</summary>
+          <p class="small muted" id="manual-problem"></p>
+          <p class="small">In Discord open <b>Settings</b>, <b>Advanced</b>, and turn on <b>Developer Mode</b>. Then right-click your server's icon and choose <b>Copy Server ID</b>.</p>
+          <label class="field" for="manual-id">Server ID</label>
+          <div class="input-row"><input type="text" id="manual-id" inputmode="numeric" autocomplete="off" placeholder="digits only"><button type="button" id="btn-manual">Use this ID</button></div>
+          <p class="error" id="err-manual" role="alert" hidden></p>
+        </details>
+        <details id="d-public" hidden>
+          <summary>Optional: make the bot private</summary>
+          <p class="small">Anyone with the bot's invite link can add it to their own server. gork ignores servers it isn't set up for, so this only keeps things tidy.</p>
+          <ol class="steps-list small">
+            <li>In the Developer Portal click <b>Installation</b> in the menu on the left. Under <b>Install Link</b> choose <b>None</b>, then click <b>Save Changes</b>. (Discord won't turn Public Bot off while an install link is set.)</li>
+            <li>Click <b>Bot</b> in the menu on the left. Turn <b>Public Bot</b> off, then click <b>Save Changes</b>.</li>
+          </ol>
+          <p class="small" role="status" id="public-status"></p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. cloudflare -->
+  <section class="card" id="card-cloudflare" aria-labelledby="h-cloudflare">
+    <div class="card-head"><span class="num" aria-hidden="true">3</span><h2 id="h-cloudflare" tabindex="-1">Connect Cloudflare</h2></div>
+    <p class="summary" id="cloudflare-summary" role="status"></p>
+    <p class="locked-note muted">Finish step 2 first.</p>
+    <div class="body">
+
+      <div id="c-failure" class="error" hidden role="alert"></div>
+      <ul class="checks" id="c-failure-notes" hidden></ul>
+
+      <div id="c-token-part">
+        <p>Cloudflare runs the AI. No account yet? <a id="cf-signup" href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer">Make a free one</a> and confirm your email, then come back.</p>
+        <h3>Create a one-time setup token</h3>
+        <p><a class="button primary" id="open-cloudflare" href="https://dash.cloudflare.com/?to=/:account/api-tokens" target="_blank" rel="noopener noreferrer">Create the setup token</a></p>
+        <ol class="steps-list">
+          <li>Cloudflare opens with a form already filled in. Choose your account if it asks.</li>
+          <li>Set the token's expiry (&ldquo;TTL&rdquo;) so that it ends <b>1 hour</b> from now. Then it deletes itself even if something goes wrong.</li>
+          <li>Click <b>Continue</b>, then <b>Create Token</b>.</li>
+          <li>Copy the long secret Cloudflare shows (it is shown only once) and paste it below.</li>
+        </ol>
+        <p class="muted small">This setup token can only create gork's own two keys. Setup deletes it at the end.</p>
+
+        <label class="choice"><input type="checkbox" id="keep-admin" checked>
+          <div><b>Keep an admin key on this computer (recommended)</b><span><code>npm run up</code> uses it to keep gork's AI Gateway set up the way gork needs.</span></div></label>
+        <details class="more">
+          <summary>More about the admin key</summary>
+          <p class="muted small">It can only manage AI Gateway. It is saved in <code>.env</code> on this computer and never goes inside gork's container. If you turn this off, the key expires after an hour, and <code>npm run up</code> stops working until you put a new <code>CF_ADMIN_TOKEN</code> in <code>.env</code>.</p>
+        </details>
+
+        <label class="field" for="cf-token">Setup token</label>
+        <div class="input-row">
+          <input type="password" id="cf-token" class="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore aria-describedby="cf-hint">
+          <button type="button" class="quiet" id="cf-paste">Paste</button>
+          <button type="button" class="quiet" id="cf-show" aria-pressed="false" aria-controls="cf-token">Show</button>
+        </div>
+        <p class="hint" id="cf-hint" aria-live="polite"></p>
+        <p class="error" id="err-cf" role="alert" hidden></p>
+        <div class="actions"><button type="button" class="primary" id="btn-cf-token">Create gork's keys</button></div>
+      </div>
+
+      <div class="work notice" id="work-cloudflare" hidden>
+        <p class="work-head"><span class="spin" aria-hidden="true"></span><b>Setting up Cloudflare. This takes about half a minute.</b></p>
+        <ul class="checks" id="work-cloudflare-list" aria-busy="true"></ul>
+        <p class="visually-hidden" role="status" id="work-cloudflare-say"></p>
+      </div>
+
+      <div id="c-account" class="panel" hidden>
+        <h3>Which Cloudflare account?</h3>
+        <div id="c-account-list-box" hidden>
+          <fieldset><legend class="visually-hidden">Account</legend><div id="account-list"></div></fieldset>
+          <div class="actions"><button type="button" class="primary" id="btn-account" disabled>Use this account</button></div>
+        </div>
+        <div id="c-account-paste" hidden>
+          <p id="account-problem"></p>
+          <label class="field" for="account-url">Dashboard address or account ID</label>
+          <div class="input-row"><input type="text" id="account-url" autocomplete="off" spellcheck="false"><button type="button" class="primary" id="btn-account-url">Use this account</button></div>
+        </div>
+        <p class="error" id="err-account" role="alert" hidden></p>
+      </div>
+
+      <div id="c-gateway" class="panel" hidden>
+        <h3>You already have an AI Gateway called &ldquo;<span id="gw-id"></span>&rdquo;</h3>
+        <p>Using it for gork changes its settings: only gork's key can use it, Cloudflare keeps no copy of what passes through, and it gets a daily spending limit. Nothing changes unless you say so.</p>
+        <details class="more">
+          <summary>More: its settings now, and gork's</summary>
+          <ul class="checks small" id="gw-summary"></ul>
+          <p class="muted small">gork sets authentication on, zero data retention, a daily spending limit, and <span id="gw-billing"></span> billing.</p>
+        </details>
+        <div class="actions"><button type="button" class="primary" id="btn-gw-overwrite">Use it and change its settings</button></div>
+        <label class="field" for="gw-new">Or use a different name</label>
+        <p class="muted small">Letters, digits and hyphens only. Setup leaves the one you have alone and makes a new one.</p>
+        <div class="input-row"><input type="text" id="gw-new" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="gw-preview"><button type="button" id="btn-gw-new" disabled>Use this name</button></div>
+        <div class="actions"><button type="button" class="quiet" id="btn-gw-suggest">Use the suggestion</button></div>
+        <p class="hint" id="gw-preview" aria-live="polite"></p>
+        <p class="error" id="err-gw" role="alert" hidden></p>
+        <div class="actions"><button type="button" class="quiet" id="btn-gw-cancel">Cancel and change nothing</button></div>
+      </div>
+
+      <div id="c-probes" class="panel" hidden>
+        <h3>What gork's key can do</h3>
+        <ul class="checks" id="probe-list"></ul>
+        <div id="c-credits" class="warnbox" hidden>
+          <p><b>gork's key works, but there are no credits yet.</b> Credits pay for the AI. Open the Cloudflare page, click <b>Manage</b>, then <b>Top-up credits</b>. The minimum top-up is $10, which lasts a long time at gork's usage.</p>
+          <p>Leave <b>auto top-up off</b>. Then the balance is the most that a stolen key could ever spend.</p>
+          <p><a class="button primary" id="open-credits" href="https://dash.cloudflare.com/?to=/:account/ai/ai-gateway" target="_blank" rel="noopener noreferrer">Open Cloudflare credits</a></p>
+          <p role="status" id="credits-status">Setup checks every few seconds and carries on by itself once the credits show up.</p>
+          <div class="actions"><button type="button" class="quiet" id="btn-credits-skip">Carry on without credits for now</button></div>
+          <p class="muted small">If you carry on, gork can't answer until you add credits. <code>npm run doctor</code> checks again later.</p>
+        </div>
+        <div class="actions" id="c-continue" hidden><button type="button" class="primary big" id="btn-cf-continue">Continue</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. finish and start -->
+  <section class="card" id="card-finish" aria-labelledby="h-finish">
+    <div class="card-head"><span class="num" aria-hidden="true">4</span><h2 id="h-finish" tabindex="-1">Save and start gork</h2></div>
+    <p class="locked-note muted">Finish step 3 first.</p>
+    <p class="summary muted">Done.</p>
+    <div class="body">
+
+      <div id="f-before">
+        <div id="f-old" class="warnbox" hidden>
+          <p><b>Keys from an earlier setup are still active in your Cloudflare account:</b></p>
+          <ul class="checks" id="old-list"></ul>
+          <p class="small">The new settings don't use them. If a gork you already run still does, it will stop working once they are revoked.</p>
+          <label class="choice"><input type="checkbox" id="revoke-old" checked><div><b>Revoke them (recommended)</b></div></label>
+        </div>
+        <p>The button saves your settings in a file called <code id="env-name">.env</code> in the gork folder (only your account can read it), then deletes the one-time setup token and checks that it no longer works.</p>
+        <p class="error" id="err-finish" role="alert" hidden></p>
+        <div class="actions"><button type="button" class="primary big" id="btn-finish">Save the settings</button></div>
+        <div class="work notice" id="work-finish" hidden>
+        <p class="work-head"><span class="spin" aria-hidden="true"></span><b>Saving your settings…</b></p>
+        <ul class="checks" id="work-finish-list" aria-busy="true"></ul>
+        <p class="visually-hidden" role="status" id="work-finish-say"></p>
+      </div>
+      </div>
+
+      <div id="f-after" hidden>
+        <ul class="checks" id="finish-list"></ul>
+        <div id="f-start">
+          <p>Last step: start gork. <b>Docker or Podman must be running.</b> The first start downloads gork's image, which is quick. If it can't be downloaded, gork is built on this computer instead, which takes roughly 15 to 30 minutes (longer on a Raspberry Pi).</p>
+          <div class="actions"><button type="button" class="primary big" id="btn-start">Start gork</button></div>
+        </div>
+        <div id="f-docker" class="warnbox" hidden role="alert">
+          <p id="docker-message"></p>
+          <p>gork runs in a container, so it needs Docker or Podman with Compose. On Windows and Mac the easy way to get them is <a id="docker-link" href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> or <a id="podman-link" href="https://podman-desktop.io/" target="_blank" rel="noopener noreferrer">Podman Desktop</a>; on Linux, Docker Engine or Podman is enough. Install one if you have neither, start it, wait until it says it is running, then press Retry.</p>
+          <div class="actions"><button type="button" class="primary" id="btn-docker-retry">Retry</button></div>
+        </div>
+        <div id="f-failed" class="error" hidden role="alert">
+          <p id="start-error"></p>
+          <div class="actions"><button type="button" class="primary" id="btn-start-retry">Try again</button></div>
+        </div>
+        <div id="f-progress" hidden>
+          <ul class="checks" id="start-steps" aria-live="polite"></ul>
+          <details><summary>Show what is happening</summary>
+          <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling box must be reachable and scrollable from the keyboard -->
+          <pre id="start-tail" tabindex="0"></pre></details>
+        </div>
+        <div id="f-online" class="good big-online" hidden role="status">
+          <h3>gork is online</h3>
+          <p>Say hi: type <b>@gork hello</b> in <span id="online-where">your server</span>.</p>
+          <p class="muted small">You can close this tab now.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <footer>
+    <span>Your tokens go only to Discord and Cloudflare, and into .env on this computer.</span>
+    <button type="button" class="link" id="btn-stop">Stop setup</button>
+  </footer>
+  </fieldset>
+</div>
+
+<script nonce="{{NONCE}}">
+"use strict";
+(() => {
+  /* {{PAGE_LOGIC}} */
+
+  // Nothing from Discord or Cloudflare is ever put in the page as HTML: names go in with textContent only.
+  const $ = (id) => document.getElementById(id);
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const el = (tag, attrs, ...kids) => {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === false || v == null) continue;
+      if (k === "text") node.textContent = v;
+      else node.setAttribute(k, v === true ? "" : String(v));
+    }
+    for (const kid of kids) node.append(kid);
+    return node;
+  };
+  const show = (id, on) => { $(id).hidden = !on; };
+  const replace = (id, ...kids) => { $(id).replaceChildren(...kids); };
+  // A `command` in a message from the server is shown as code, still through textContent only.
+  const rich = (text) => codeParts(text).map((p) => (p.code ? el("code", { text: p.text }) : document.createTextNode(p.text)));
+  const say = (id, text) => {
+    const t = text || "";
+    if (!t.includes("`")) { $(id).textContent = t; return; }
+    replace(id, ...rich(t));
+  };
+  // Only addresses the server itself supplied, and only https, ever become links.
+  const link = (id, url) => {
+    const a = $(id);
+    const href = safeHref(url);
+    if (href) a.setAttribute("href", href);
+    else a.removeAttribute("href");
+  };
+
+  let view = null;
+  // The card whose action the person has just started, until the server's own answer says what it is doing.
+  let pending = null;
+  // Actions finished so far: a state answer that was already on its way when one finished is old news.
+  let actionsDone = 0;
+  let lost = false;
+  let stopped = false;
+  // The person pressed Continue past a check that didn't pass (or past the wait for credits).
+  let acked = false;
+  let editingChoices = false;
+  let sawPublic = false;
+  let lastStep = null;
+  const signatures = {};
+  // Rebuilds a list only when its data changed, so a half-made choice or a focus is never lost to a poll.
+  const same = (key, data) => {
+    const sig = JSON.stringify(data);
+    if (signatures[key] === sig) return true;
+    signatures[key] = sig;
+    return false;
+  };
+
+  /* ---------- talking to the server ---------- */
+
+  const banner = (text) => {
+    $("banner").textContent = text || "";
+    $("banner").hidden = !text;
+  };
+  // Setup has closed (or never was this page's): say so, and switch every control off until it answers again.
+  const showLost = (on) => {
+    $("lost-banner").hidden = !on;
+    $("guard").disabled = on;
+  };
+  const markLost = () => {
+    if (!closedMeansLost(view, stopped)) return;
+    lost = true;
+    showLost(true);
+    // Nothing may have been received yet, so render() (which schedules the next look) may never run: start the timer here.
+    schedule();
+  };
+
+  async function call(path, data, errorId) {
+    if (errorId) show(errorId, false);
+    const before = actionsDone;
+    let res;
+    try {
+      res = await fetch("api/" + path, data === undefined
+        ? { method: "GET", cache: "no-store" }
+        : { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    } catch {
+      markLost();
+      return null;
+    }
+    // Another run's server (or none of this page's): it doesn't know this address, so this page has closed.
+    if (isClosedAnswer(res.status)) { markLost(); return null; }
+    if (lost) { lost = false; showLost(false); }
+    let body = null;
+    try { body = await res.json(); } catch { /* not JSON: handled below */ }
+    if (data === undefined && actionsDone !== before) return null;
+    if (data !== undefined) actionsDone++;
+    if (body && body.view) { view = body.view; render(); }
+    if (!res.ok || !body || body.ok === false) {
+      const message = (body && body.error) || "Something went wrong (" + res.status + "). Reload this page; if it keeps happening, look at the terminal.";
+      if (errorId) { say(errorId, message); show(errorId, true); }
+      return null;
+    }
+    return body.view;
+  }
+
+  async function busy(button, label, work) {
+    const was = button.textContent;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    if (label) button.textContent = label;
+    try { return await work(); }
+    finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.textContent = was;
+      render();
+    }
+  }
+
+  // Runs an action that takes a while and shows the card's checklist from the first moment, not from the first poll.
+  async function working(id, work) {
+    pending = id;
+    render();
+    try { return await work(); }
+    finally { pending = null; render(); }
+  }
+
+  function renderWork(id, work) {
+    show("work-" + id, !!work);
+    if (!work) return;
+    if (!same("work-" + id, work.steps)) {
+      replace("work-" + id + "-list", ...work.steps.map((st) => el("li", {},
+        el("span", { class: "mark " + (st.state === "done" ? "ok" : st.state === "active" ? "wait" : "todo"), "aria-hidden": "true", text: st.state === "done" ? "✓" : st.state === "active" ? "…" : "•" }),
+        el("span", { class: st.state === "todo" ? "todo" : "" },
+          el("span", { class: "visually-hidden", text: st.state === "done" ? "Done: " : st.state === "active" ? "Now: " : "Next: " }),
+          document.createTextNode(st.label)))));
+    }
+    const now = work.steps.find((st) => st.state === "active");
+    say("work-" + id + "-say", now ? now.label : "");
+  }
+
+  /* ---------- rendering ---------- */
+
+  function render() {
+    const v = view;
+    if (!v) return;
+    $("main").hidden = v.envExists && !v.choices;
+    if (v.envExists && !v.choices) {
+      banner(v.envName + " already exists, and setup never overwrites it. Move it aside (for example rename it to " + v.envName + ".old) and run npm run setup again, or run npm run doctor to check the one you have.");
+      return;
+    }
+    const state = cardState(v, { editingChoices, acked });
+    const order = ["choices", "discord", "cloudflare", "finish"];
+    for (const name of order) {
+      $("card-" + name).dataset.state = state[name];
+      const li = document.querySelector('#progress li[data-step="' + name + '"]');
+      li.dataset.state = name === "finish" && v.start.status === "online" ? "done" : state[name];
+      if (state[name] === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+      li.querySelector(".dot").textContent = li.dataset.state === "done" ? "✓" : String(order.indexOf(name) + 1);
+    }
+    const active = order.find((n) => state[n] === "active");
+    if (active && active !== lastStep) {
+      if (lastStep !== null) {
+        const heading = $("h-" + active);
+        heading.focus({ preventScroll: true });
+        heading.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+      }
+      lastStep = active;
+    }
+    renderChoices(v);
+    renderDiscord(v);
+    renderCloudflare(v, !!workOf(v, pending, "cloudflare"));
+    renderFinish(v);
+    for (const id of ["discord", "cloudflare", "finish"]) renderWork(id, workOf(v, pending, id));
+    schedule();
+  }
+
+  function renderChoices(v) {
+    const personas = v.options.personas;
+    if (!same("personas", personas)) {
+      const keep = (document.querySelector('input[name="persona"]:checked') || {}).value;
+      const pick = keep || (v.choices && v.choices.persona) || (personas.some((p) => p.name === "default") ? "default" : personas[0] && personas[0].name);
+      replace("persona-list", ...personas.map((p) => el("label", { class: "choice" },
+        el("input", { type: "radio", name: "persona", value: p.name, checked: p.name === pick }),
+        el("div", {}, el("b", { text: p.name }), el("span", { text: p.description || "" })))));
+    }
+    if (v.choices && !editingChoices) say("choices-summary", choicesSummary(v.choices));
+    renderCustom(v);
+    show("choices-change", !!v.choices && v.cloudflare.phase === "token" && !editingChoices);
+    show("budget-box", currentBilling() === "credits");
+  }
+
+  const currentBilling = () => (document.querySelector('input[name="billing"]:checked') || {}).value || "credits";
+  const customChosen = () => (document.querySelector('input[name="persona"]:checked') || {}).value === "custom";
+
+  /* ---------- the custom personality editor ---------- */
+
+  // Puts a hint's text and level in the element `id`.
+  const hint = (id, h) => { say(id, h.text); $(id).dataset.level = h.level; };
+  const showNameHint = () => hint("custom-name-hint", nameHint($("custom-name").value));
+  const showBodyCount = () => hint("custom-body-count", charactersLeft($("custom-body").value, Number($("custom-body").getAttribute("maxlength")) || 8000));
+
+  // Puts the server's version in the boxes. Only called when that version changed, never on an ordinary poll.
+  function fillCustom(c) {
+    $("custom-name").value = c.draft.name;
+    $("custom-body").value = c.draft.body;
+    $("custom-quirk").value = c.draft.quirk;
+    $("custom-rate").value = c.draft.quirk ? String(c.draft.quirkRate) : "30";
+    for (const f of c.replyFields) {
+      const box = $("reply-" + f.key);
+      if (box) box.value = c.draft.replies[f.key] || "";
+    }
+    showNameHint();
+    showBodyCount();
+  }
+
+  function renderCustom(v) {
+    const c = v.custom;
+    show("custom-editor", customChosen());
+    show("custom-exists", c.exists);
+    if (!same("reply-fields", c.replyFields)) {
+      replace("reply-list", ...c.replyFields.map((f) => el("div", {},
+        el("label", { class: "field", for: "reply-" + f.key, text: f.label }),
+        el("div", { class: "input-row" }, el("input", { type: "text", id: "reply-" + f.key, maxlength: c.limits.reply, placeholder: f.placeholder, autocomplete: "off" })))));
+      signatures["custom-draft"] = null;
+    }
+    $("custom-name").maxLength = c.limits.name;
+    if (!same("custom-draft", c.draft)) fillCustom(c);
+    // What the last save of the custom personality warned about: kept in the card's summary too, since the form is
+    // hidden once the choices are saved.
+    const warnings = customWarnings(v);
+    say("custom-warnings-summary", warnings.join(" "));
+    show("custom-warnings-summary", warnings.length > 0 && !editingChoices);
+    show("custom-warnings", warnings.length > 0);
+    if (!same("custom-warnings", warnings)) replace("custom-warnings", ...warnings.map((w) => el("li", {}, el("span", { class: "mark warn", "aria-hidden": "true", text: "!" }), el("span", {}, ...rich(w)))));
+  }
+
+  function customAnswers() {
+    const replies = {};
+    for (const box of document.querySelectorAll("#reply-list input")) replies[box.id.slice(6)] = box.value;
+    return { name: $("custom-name").value, body: $("custom-body").value, quirk: $("custom-quirk").value, quirkRate: $("custom-rate").value, replies };
+  }
+
+  function renderDiscord(v) {
+    const d = v.discord;
+    link("open-discord", v.links.discordApp);
+    link("open-invite", d.inviteUrl);
+    show("d-token-part", !d.app);
+    if (!d.app && d.problem) { say("err-discord", d.problem); show("err-discord", true); }
+    show("d-connected", !!d.app);
+    if (d.app) say("d-connected", "✓ Connected to the Discord app “" + d.app.name + "”.");
+    show("d-intent", !!d.intent && !d.intent.ok);
+    if (d.intent && !d.intent.ok) say("d-intent", d.intent.message);
+
+    // Shown once the bot was seen public, and kept after it is turned off so the tick can be seen.
+    if (d.publicBot === "on") sawPublic = true;
+    if (!d.app) sawPublic = false;
+    show("d-public", sawPublic);
+    if (sawPublic) say("public-status", d.publicBot === "on" ? discordWaiting(d, "public") : "✓ The bot is private.");
+    const wantInvite = !!d.app && !d.selected;
+    show("d-invite", wantInvite);
+    if (wantInvite) {
+      const guilds = d.guilds || [];
+      show("d-guilds", guilds.length > 0);
+      show("invite-status", guilds.length === 0 && !d.guildsProblem);
+      say("invite-status", discordWaiting(d, "invite"));
+      if (!same("guilds", guilds)) {
+        replace("guild-list", ...guilds.map((g, i) => el("label", { class: "choice" },
+          el("input", { type: "radio", name: "guild", value: g.id }),
+          el("div", {}, el("b", { text: g.name || "Server " + g.id }), el("span", { text: "ID " + g.id })))));
+        $("btn-guild").disabled = true;
+      }
+      say("manual-problem", d.guildsProblem || "");
+      if (d.guildsProblem) $("d-manual").open = true;
+    }
+    if (d.selected) {
+      say("discord-summary", "✓ gork will answer in: " + d.selected.map((g) => g.name || "server " + g.id).join(", "));
+    }
+  }
+
+  // What the name in the box would make, said before anything is created; the button only works for a good, new name.
+  function showGatewayPreview() {
+    const p = gatewayPreview($("gw-new").value, view && view.cloudflare.gateway);
+    hint("gw-preview", p);
+    $("btn-gw-new").disabled = !p.ok;
+  }
+
+  function renderCloudflare(v, working) {
+    const c = v.cloudflare;
+    link("cf-signup", v.links.cloudflareSignup);
+    link("open-cloudflare", v.links.cloudflareToken);
+    link("open-credits", v.links.credits);
+    const asking = c.phase === "token";
+    show("c-token-part", asking && !working);
+    show("c-failure", !!c.failure && asking && !working);
+    if (c.failure && asking) {
+      say("c-failure", c.failure + (c.needNewToken ? " To try again, make a new setup token with the button below and paste its secret." : ""));
+    }
+    const notes = asking ? c.failureNotes : [];
+    show("c-failure-notes", notes.length > 0 && !working);
+    if (!same("failure-notes", notes)) replace("c-failure-notes", ...notes.map((n) => el("li", {}, el("span", { class: "mark wait", "aria-hidden": "true", text: "•" }), el("span", {}, ...rich(n.trim())))));
+
+    show("c-account", c.phase === "account" && !working);
+    if (c.phase === "account") {
+      show("c-account-list-box", !!c.accounts);
+      show("c-account-paste", !c.accounts);
+      say("account-problem", c.accountProblem || "");
+      if (c.accounts && !same("accounts", c.accounts)) {
+        replace("account-list", ...c.accounts.map((a) => el("label", { class: "choice" },
+          el("input", { type: "radio", name: "account", value: a.id }),
+          el("div", {}, el("b", { text: a.name || "Account" }), el("span", { text: a.id })))));
+        $("btn-account").disabled = true;
+      }
+    }
+
+    show("c-gateway", c.phase === "gateway" && !!c.gateway && !working);
+    if (c.phase === "gateway" && c.gateway) {
+      say("gw-id", c.gateway.id);
+      say("gw-billing", v.choices && v.choices.billing === "free" ? "standard" : "credits");
+      if (!same("gw", c.gateway)) {
+        replace("gw-summary", ...c.gateway.summary.map((l) => el("li", {}, el("span", { class: "mark wait", "aria-hidden": "true", text: "•" }), el("span", {}, ...rich(l)))));
+        // A new question (the first one, or the next one after a name that was taken too): an empty box, the suggestion beside it.
+        $("gw-new").value = "";
+        $("gw-new").setAttribute("placeholder", c.gateway.suggestion);
+      }
+      // Every render, not only for a new question: busy() puts back the label the button had when it was pressed.
+      if (!$("btn-gw-suggest").hasAttribute("aria-busy")) $("btn-gw-suggest").textContent = "Use " + c.gateway.suggestion;
+      showGatewayPreview();
+    }
+
+    const ready = c.phase === "ready";
+    show("c-probes", ready && !working);
+    if (ready) {
+      if (!same("probes", c.probes)) {
+        replace("probe-list", ...c.probes.map(probeLine).map((p) => el("li", {},
+          el("span", { class: "mark " + (p.ok ? "ok" : "bad"), "aria-hidden": "true", text: p.ok ? "✓" : "!" }),
+          el("span", {}, el("span", { class: "visually-hidden", text: p.ok ? "Works: " : "Problem: " }), el("b", { text: p.name }), ...rich(p.detail)))));
+      }
+      const allOk = c.probes.every((p) => p.ok);
+      show("c-credits", c.needsCredits && !acked);
+      show("c-continue", !allOk && !c.needsCredits && !acked);
+    }
+    if (c.phase !== "ready") acked = false;
+    say("cloudflare-summary", ready ? (c.probes.every((p) => p.ok) ? "✓ gork's keys are made and tested." : "✓ gork's keys are made. Some checks didn't pass; you can fix that later.") : "");
+  }
+
+  function renderFinish(v) {
+    const f = v.finish;
+    say("env-name", v.envName);
+    const old = v.cloudflare.older;
+    show("f-old", old.length > 0 && !f.written);
+    if (!same("old", old)) replace("old-list", ...old.map((t) => el("li", {}, el("span", { class: "mark wait", "aria-hidden": "true", text: "•" }), el("span", { text: t.name + " (" + t.id + ")" }))));
+    if (v.cloudflare.olderProblem && !f.written) {
+      say("err-finish", v.cloudflare.olderProblem);
+    }
+    show("f-before", !f.written);
+    show("f-after", f.written);
+    if (!f.written) return;
+
+    const lines = finishLines(v);
+    if (!same("finish", lines)) {
+      replace("finish-list", ...lines.map((l) => el("li", {}, el("span", { class: "mark " + (!l.ok ? "bad" : l.warn ? "warn" : "ok"), "aria-hidden": "true", text: l.ok && !l.warn ? "✓" : "!" }), el("span", {}, ...rich(l.text)))));
+    }
+
+    const s = v.start;
+    link("docker-link", v.links.docker);
+    link("podman-link", v.links.podman);
+    show("f-start", s.status === "idle");
+    show("f-docker", s.status === "docker");
+    show("f-failed", s.status === "failed");
+    if (s.status === "failed") say("start-error", s.message || "gork didn't start.");
+    if (s.status === "docker") say("docker-message", s.message);
+    show("f-progress", s.status === "running" || s.status === "online" || s.status === "failed");
+    if (!same("steps", [s.steps, s.status])) {
+      replace("start-steps", ...s.steps.map((t, i) => {
+        const last = i === s.steps.length - 1 && s.status === "running";
+        return el("li", {}, el("span", { class: "mark " + (last ? "wait" : "ok"), "aria-hidden": "true", text: last ? "…" : "✓" }), el("span", { text: t }));
+      }));
+    }
+    const tail = s.tail.join("\n");
+    if ($("start-tail").textContent !== tail) {
+      const pre = $("start-tail");
+      const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+      pre.textContent = tail;
+      if (atEnd) pre.scrollTop = pre.scrollHeight;
+    }
+    show("f-online", s.status === "online");
+    if (s.status === "online") say("online-where", s.servers.length ? s.servers.join(" or ") : "your server");
+  }
+
+  /* ---------- polling ---------- */
+
+  let timer = null;
+  let ticking = false;
+
+  const nextPoll = () => pollKind(view, { stopped, lost, pending, acked });
+
+  function schedule() {
+    clearTimeout(timer);
+    const next = nextPoll();
+    if (next) timer = setTimeout(tick, next.every);
+  }
+
+  async function tick() {
+    if (ticking) return;
+    const next = nextPoll();
+    if (!next) return;
+    ticking = true;
+    try { await (next.path === "state" ? call("state") : call(next.path, {})); }
+    finally { ticking = false; schedule(); }
+  }
+
+  // After the person comes back from the Discord or Cloudflare tab, look straight away.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { clearTimeout(timer); tick(); } });
+
+  /* ---------- hiding and checking pasted secrets ---------- */
+
+  function secretField(kind, inputId, hintId, pasteId, showId) {
+    const input = $(inputId);
+    const update = () => hint(hintId, secretHint(kind, input.value));
+    input.addEventListener("input", update);
+    update();
+    $(showId).addEventListener("click", () => {
+      const hidden = input.type === "password";
+      input.type = hidden ? "text" : "password";
+      $(showId).textContent = hidden ? "Hide" : "Show";
+      $(showId).setAttribute("aria-pressed", String(hidden));
+    });
+    $(pasteId).addEventListener("click", async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        input.value = text.trim();
+        update();
+        input.focus();
+      } catch {
+        say(hintId, "This page can't read your clipboard. Click in the box and press Ctrl+V (on a Mac, Cmd+V).");
+        $(hintId).dataset.level = "bad";
+        input.focus();
+      }
+    });
+    return { input, update, clear() { input.value = ""; input.type = "password"; $(showId).textContent = "Show"; $(showId).setAttribute("aria-pressed", "false"); update(); } };
+  }
+
+  const discordField = secretField("discord", "discord-token", "discord-hint", "discord-paste", "discord-show");
+  const cfField = secretField("cloudflare", "cf-token", "cf-hint", "cf-paste", "cf-show");
+
+  /* ---------- the choices form ---------- */
+
+  // The time zone the box starts with, which Advanced counts as a default.
+  let startZone = "UTC";
+  try {
+    const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+    $("zones").replaceChildren(...zones.map((z) => el("option", { value: z })));
+    startZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    /* UTC */
+  }
+  $("timezone").value = startZone;
+
+  for (const r of document.querySelectorAll('input[name="billing"]')) r.addEventListener("change", () => show("budget-box", currentBilling() === "credits"));
+  $("custom-name").addEventListener("input", showNameHint);
+  $("custom-body").addEventListener("input", showBodyCount);
+  for (const r of document.querySelectorAll('input[name="pings"]')) {
+    r.addEventListener("change", () => {
+      const some = document.querySelector('input[name="pings"]:checked').value === "some";
+      for (const k of document.querySelectorAll('input[name="kind"]')) { k.disabled = !some; if (!some) k.checked = false; }
+    });
+  }
+
+  function mentionsValue() {
+    if (document.querySelector('input[name="pings"]:checked').value === "none") return "none";
+    const kinds = [...document.querySelectorAll('input[name="kind"]:checked')].map((k) => k.value);
+    return kinds.length ? kinds.join(",") : "none";
+  }
+
+  $("choices-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const persona = document.querySelector('input[name="persona"]:checked');
+    const done = await busy($("btn-choices"), "Saving…", () => call("choices", {
+      billing: currentBilling(),
+      persona: persona ? persona.value : "",
+      mentions: mentionsValue(),
+      timezone: $("timezone").value,
+      budget: $("budget").value,
+      custom: customChosen() ? customAnswers() : undefined,
+    }, "err-choices"));
+    if (done) editingChoices = false;
+    // Most answers the server can refuse are under Advanced: open it so the error points at something visible.
+    else $("advanced").open = true;
+    render();
+  });
+
+  $("choices-change").addEventListener("click", () => {
+    editingChoices = true;
+    if (view && view.choices && advancedChanged(view.choices, startZone)) $("advanced").open = true;
+    render();
+    $("h-choices").focus();
+  });
+
+  /* ---------- Discord ---------- */
+
+  $("btn-discord-token").addEventListener("click", async () => {
+    const ok = await working("discord", () => busy($("btn-discord-token"), "Checking…", () => call("discord/token", { token: discordField.input.value }, "err-discord")));
+    if (ok) discordField.clear();
+  });
+  discordField.input.addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-discord-token").click(); });
+
+  document.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t && t.name === "guild") $("btn-guild").disabled = false;
+    if (t && t.name === "account") $("btn-account").disabled = false;
+    if (t && t.name === "persona") show("custom-editor", customChosen());
+  });
+
+  $("btn-guild").addEventListener("click", async () => {
+    const picked = document.querySelector('input[name="guild"]:checked');
+    if (!picked) return;
+    await busy($("btn-guild"), "Saving…", () => call("discord/servers", { ids: [picked.value] }, "err-guilds"));
+  });
+
+  $("btn-manual").addEventListener("click", async () => {
+    await busy($("btn-manual"), null, () => call("discord/servers", { ids: [], manual: $("manual-id").value }, "err-manual"));
+  });
+
+  /* ---------- Cloudflare ---------- */
+
+  $("btn-cf-token").addEventListener("click", async () => {
+    const ok = await working("cloudflare", () => busy($("btn-cf-token"), "Working…", () => call("cloudflare/token", { token: cfField.input.value, keepAdmin: $("keep-admin").checked }, "err-cf")));
+    if (ok || (view && view.cloudflare.phase !== "token") || (view && view.cloudflare.needNewToken)) cfField.clear();
+  });
+  cfField.input.addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-cf-token").click(); });
+
+  async function pickAccount(value) {
+    await working("cloudflare", () => busy($("btn-account"), "Working…", () => call("cloudflare/account", { account: value }, "err-account")));
+  }
+  $("btn-account").addEventListener("click", () => {
+    const picked = document.querySelector('input[name="account"]:checked');
+    if (picked) pickAccount(picked.value);
+  });
+  $("btn-account-url").addEventListener("click", () => pickAccount($("account-url").value));
+
+  $("btn-gw-overwrite").addEventListener("click", () => working("cloudflare", () => busy($("btn-gw-overwrite"), "Working…", () => call("cloudflare/gateway", { action: "overwrite" }, "err-gw"))));
+  $("btn-gw-new").addEventListener("click", () => working("cloudflare", () => busy($("btn-gw-new"), "Working…", () => call("cloudflare/gateway", { action: "new", newId: $("gw-new").value.trim() }, "err-gw"))));
+  $("btn-gw-suggest").addEventListener("click", () => {
+    const gateway = view && view.cloudflare.gateway;
+    if (gateway) working("cloudflare", () => busy($("btn-gw-suggest"), "Working…", () => call("cloudflare/gateway", { action: "new", newId: view.cloudflare.gateway.suggestion }, "err-gw")));
+  });
+  // The box starts empty (the suggestion is its placeholder), so typing never lands after a name that was put there.
+  $("gw-new").addEventListener("input", showGatewayPreview);
+  $("gw-new").addEventListener("focus", () => $("gw-new").select());
+  $("gw-new").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("btn-gw-new").disabled) $("btn-gw-new").click(); });
+  $("btn-gw-cancel").addEventListener("click", () => working("cloudflare", () => busy($("btn-gw-cancel"), "Cancelling…", () => call("cloudflare/gateway", { action: "cancel" }, "err-gw"))));
+
+  $("btn-credits-skip").addEventListener("click", () => { acked = true; render(); });
+  $("btn-cf-continue").addEventListener("click", () => { acked = true; render(); });
+
+  /* ---------- finish and start ---------- */
+
+  $("btn-finish").addEventListener("click", () => working("finish", () => busy($("btn-finish"), "Saving…", () => call("finish", { revokeOld: $("revoke-old").checked }, "err-finish"))));
+  const start = (button) => busy(button, "Starting…", () => call("start", {}, "err-finish"));
+  $("btn-start").addEventListener("click", (e) => start(e.currentTarget));
+  $("btn-docker-retry").addEventListener("click", (e) => start(e.currentTarget));
+  $("btn-start-retry").addEventListener("click", (e) => start(e.currentTarget));
+
+  $("btn-stop").addEventListener("click", async () => {
+    const finished = view && (view.finish.written || view.start.status === "online");
+    if (!finished && !confirm("Stop setup? Anything setup already created (keys, gateway) will be taken back.")) return;
+    stopped = true;
+    clearTimeout(timer);
+    await busy($("btn-stop"), "Stopping…", () => call("close", {}));
+    banner(finished ? "Setup is closed. You can close this tab." : "Setup has stopped, and what it had made was taken back. You can close this tab.");
+    $("banner").className = "notice";
+    $("main").hidden = true;
+  });
+
+  call("state");
+})();
+</script>
+</body>
+</html>

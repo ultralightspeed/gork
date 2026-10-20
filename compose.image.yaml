@@ -1,0 +1,9 @@
+# Layered over compose.yaml by `npm run up` when it runs a downloaded image instead of building one:
+#   docker compose -f compose.yaml -f compose.image.yaml up -d --no-build     (podman compose works the same)
+# GORK_IMAGE_REF is set by npm run up for that one command: the release matching package.json's version
+# (ghcr.io/ultralightspeed/gork:<version>, see scripts/lib/image.ts), or the image GORK_IMAGE names. It is not the
+# GORK_IMAGE setting in .env (that one is read by npm run up, which turns it into this), so nothing in .env can reach
+# the image name by accident. There is no default: run without npm run up, this file stops instead of guessing a tag.
+services:
+  gork:
+    image: ${GORK_IMAGE_REF:?set by npm run up}

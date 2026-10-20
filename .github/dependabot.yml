@@ -1,0 +1,28 @@
+# Weekly version updates, with minor and patch bumps grouped into one pull request per ecosystem.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Wait a week after a release, so a bad or hijacked version is usually caught before it is proposed.
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    # The base image stays on Node 24, the version .nvmrc and package.json's engines name.
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
