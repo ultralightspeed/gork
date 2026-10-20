@@ -47,35 +47,66 @@ gork is built for a small private server of people you know. You run it yourself
 
 ## Quickstart
 
+Setting up gork takes about 15 minutes, and you don't write any code. You install two free programs, type one command, and a page in your web browser walks you through the rest.
+
+Already at home in a terminal? With Docker or Podman running:
+
 ```sh
-# 1. Get gork
 git clone https://github.com/ultralightspeed/gork.git
 cd gork
-
-# 2. Start Docker or Podman, then open the setup page in your browser
 npm run setup
 ```
 
-No coding and no `npm install` needed: `npm run setup` uses only what comes with Node, and gork's own packages come inside its container image. No git? Use the green **Code** button above, then **Download ZIP**.
+### What you need
 
-You need:
+- A Windows, Mac or Linux computer that stays on while you want gork online. gork runs on it, not in the cloud.
+- A Discord account, and a server where you may add bots (your own server is fine).
+- A free Cloudflare account. Sign up at <https://dash.cloudflare.com/sign-up> and confirm your email.
 
-- A computer that stays on while you want gork online. A Windows, Mac or Linux PC is fine.
-- Docker or Podman with Compose, installed and running. Only the command-line tools are needed, not a Desktop app. On Windows and Mac, [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman Desktop](https://podman-desktop.io/) is the easy way to get them. On Linux, Docker Engine with the Compose plugin, or Podman 4.7 or newer with docker-compose or podman-compose, is enough. Anything else that gives you a working `docker compose` (OrbStack, Colima, Rancher Desktop and so on) works the same way, since those are the only commands gork runs. Docker must be 23 or newer, which reads the image's compressed layers. gork uses Docker if it works and Podman otherwise.
-- [Node.js](https://nodejs.org/) 24 or newer. The `npm` command comes with it.
-- A Discord account, and a server where you can add bots.
-- A free Cloudflare account. Sign up at <https://dash.cloudflare.com/sign-up>.
+### 1. Install two free programs
 
-`npm run setup` opens a page in your web browser (or prints an address to copy into it). The page walks you through setup one step at a time:
+- **Node.js**, version 24 or newer: download it from <https://nodejs.org/> (the **LTS** button), run the installer and keep the default choices.
+- **Docker Desktop**: download it from <https://www.docker.com/products/docker-desktop/> and install it. Open it once and wait until it says the engine is running. [Podman Desktop](https://podman-desktop.io/) works too.
 
-1. Choose how gork pays for the model (free or credits, see below), its personality, who it may mention and your time zone.
-2. Create the bot in Discord and paste its token into the page. The page turns on the settings gork needs and shows you the server gork joined so you can confirm it.
+<details>
+<summary>Other ways to run containers</summary>
+
+Only Docker's or Podman's command-line tools with Compose are needed, not a Desktop app. On Linux, Docker Engine with the Compose plugin, or Podman 4.7 or newer with docker-compose or podman-compose, is enough. Anything else that gives you a working `docker compose` (OrbStack, Colima, Rancher Desktop and so on) works the same way, since those are the only commands gork runs. Docker must be 23 or newer, which reads the image's compressed layers. gork uses Docker if it works and Podman otherwise.
+
+</details>
+
+### 2. Download gork
+
+Near the top of this page, click the green **Code** button, then **Download ZIP**. Unzip it (on Windows: right-click the file, then **Extract All**). You get a folder named `gork-main`; put it anywhere you like, such as your Documents folder.
+
+### 3. Open a terminal in that folder
+
+A terminal is a window where you type commands.
+
+- **Windows**: open the `gork-main` folder, click the address bar at the top of the window, type `cmd` and press Enter. A black Command Prompt window opens, already in the right folder.
+- **Mac**: open **Terminal** (press Cmd+Space, type `Terminal`, press Enter). Type `cd` and a space, drag the `gork-main` folder into the Terminal window, and press Enter.
+- **Linux**: right-click inside the folder and choose **Open in Terminal**.
+
+### 4. Start the setup page
+
+Type this and press Enter:
+
+```sh
+npm run setup
+```
+
+It opens a page in your web browser (or prints an address to copy into it). Nothing else needs installing: `npm run setup` uses only what comes with Node, and gork's own parts come inside its container image. The page walks you through four steps:
+
+1. Choose how gork pays for the model (free or credits, see [What it costs](#what-it-costs)), its personality, who it may mention and your time zone.
+2. Create the bot in Discord and paste its token into the page. The page shows where to click, turns on the settings gork needs, and shows you the server gork joined so you can confirm it.
 3. Create a one-time Cloudflare setup token and paste it into the page. The page creates two Cloudflare tokens limited to what gork needs, sets up the AI Gateway, tests everything, and deletes the setup token.
-4. Click **Save the settings**, which writes your `.env` file, then **Start gork**.
+4. Click **Save the settings**, which writes your settings to a file named `.env`, then **Start gork**.
 
-Starting gork downloads its ready-made image from GitHub, which takes a few minutes. If the download fails, gork builds the image on your computer instead, which compiles FFmpeg and takes 15 to 30 minutes (longer on a Raspberry Pi). When the page says gork is online, go to your server and write `@gork hello`. Leave the terminal window open until then.
+Starting gork downloads its ready-made image from GitHub, which takes a few minutes. If the download fails, gork builds the image on your computer instead, which takes 15 to 30 minutes (longer on a Raspberry Pi). Leave the terminal window open until the page says gork is online. Then go to your server and write `@gork hello`.
 
-Later, `npm run up` starts gork again and `npm run down` stops it. [docs/setup.md](docs/setup.md) covers every step of the page, setting up by hand, and the everyday commands. If something does not work, run `npm run doctor`, then see [docs/troubleshooting.md](docs/troubleshooting.md).
+### Afterwards
+
+Run these in a terminal opened in the gork folder: `npm run up` starts gork again (after a restart, or after you change a setting), and `npm run down` stops it. To get a new version of gork, see [Updating gork](docs/setup.md#updating-gork). If something doesn't work, run `npm run doctor` and fix the `FAIL` lines it shows, then see [docs/troubleshooting.md](docs/troubleshooting.md). [docs/setup.md](docs/setup.md) covers every step of the page, setting up by hand, and the everyday commands.
 
 ## What it costs
 
