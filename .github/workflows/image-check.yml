@@ -3,7 +3,9 @@ name: Image check
 # Builds the image and checks it, but only when something that goes into it changes: compiling ffmpeg from source
 # takes about 13 minutes on GitHub's runners, so it should not run on every docs or code-only push.
 on:
+  # Branches only: a release tag points at a commit main already checked, and image.yml builds both architectures.
   push:
+    branches: ["**"]
     paths:
       - Dockerfile
       - docker/**

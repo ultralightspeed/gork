@@ -120,6 +120,13 @@ describe("the helpers above", () => {
   });
 });
 
+describe("CI and the image check", () => {
+  it("run on branch pushes only, so a release tag doesn't repeat the checks its commit already passed", () => {
+    for (const name of ["ci.yml", "image-check.yml"])
+      expect(read(name), name).toMatch(/^ {2}push:\n {4}branches: \["\*\*"\]\n/m);
+  });
+});
+
 describe("the secret scan", () => {
   const scan = read("secret-scan.yml");
 

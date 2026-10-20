@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Branches only: a release tag points at a commit main already checked, and image.yml runs its own checks.
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
