@@ -203,9 +203,10 @@ export function buildMessages(o: {
  * the tool's own text says which images follow and they arrive as one user message placed right after the round's
  * tool messages (llm.ts), each image after a text part naming it. Null when there are none.
  *
- * NEEDS A LIVE CHECK on Workers AI GLM-5.3-flash: that it accepts image parts in a user message after tool messages.
- * If it doesn't, this is the one place to change (for example to a plain user text turn plus the images in the
- * next request's first user message).
+ * Checked live on 2026-10-20 with Workers AI GLM-5.3-flash (@cf/zai-org/glm-5.3-flash): it accepts image parts in a
+ * user message after tool messages, and named both colours of a half-green, half-magenta test frame, in either order.
+ * `npm run probe` repeats the check for the model you run. Another model that refuses this shape needs only this
+ * function changed (for example to a plain user text turn plus the images in the next request's first user message).
  */
 export function toolImagesMessage(images: ToolImage[]): ChatMessage | null {
   if (images.length === 0) return null;

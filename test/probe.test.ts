@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planProbes, report, reportError } from "../scripts/probe.ts";
+import { planProbes, report, reportError, roundTripMessages, splitPng } from "../scripts/probe.ts";
 import { CREDITS_MODEL, FREE_MODEL, SettingsError } from "../src/config.ts";
 
 describe("planProbes", () => {
@@ -66,5 +66,29 @@ describe("what a probe prints", () => {
     const out = reportError("chat", new Error(`connect failed for ${TOKEN}`), [TOKEN]);
     expect(out).toContain("== chat: ERROR");
     expect(out).not.toContain(TOKEN);
+  });
+});
+
+describe("the tool round-trip probe", () => {
+  const ask = { role: "user" as const, content: "q" };
+  const call = { id: "c1", type: "function", function: { name: "look", arguments: "{}" } };
+
+  it("makes a real PNG, so only a model that sees it can name its two colours", () => {
+    const url = splitPng([0, 200, 0], [230, 0, 230]);
+    expect(url).toMatch(/^data:image\/png;base64,/);
+    const png = Buffer.from(url.split(",")[1], "base64");
+    expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(png.subarray(12, 16).toString()).toBe("IHDR");
+  });
+
+  it("sends what the bot sends: the call, its tool message right after, then the images in a user message", () => {
+    const m = roundTripMessages(ask, call, splitPng([0, 200, 0], [230, 0, 230]));
+    expect(m.map((x) => x.role)).toEqual(["user", "assistant", "tool", "user"]);
+    expect(m[2]).toMatchObject({ tool_call_id: "c1" });
+    expect(JSON.stringify(m[3].content)).toContain("image_url");
+  });
+
+  it("leaves the image out for a model that can't see", () => {
+    expect(roundTripMessages(ask, call, null).map((x) => x.role)).toEqual(["user", "assistant", "tool"]);
   });
 });
