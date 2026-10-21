@@ -1,6 +1,7 @@
 import { splitCsv } from "./csv.ts";
 import { GUARD_CATEGORIES } from "./guard.ts";
 import { type MentionKind, parseMentions } from "./mentions.ts";
+import { SEARCH_PROVIDER_NAMES, SEARCH_PROVIDERS, type SearchProvider } from "./search-providers.ts";
 import { isTimeZone } from "./time.ts";
 
 /**
@@ -257,8 +258,20 @@ export const SETTINGS = {
   SEARCH_PROVIDER: setting({
     group: "Tools",
     default: "ceramic",
-    help: "Web Search provider on Cloudflare: ceramic, exa or linkup.",
-    parse: oneOf("ceramic", "exa", "linkup"),
+    help: `Web Search provider on Cloudflare for a reply's first search: ceramic ($${SEARCH_PROVIDERS.ceramic.priceUsd} a search), linkup ($${SEARCH_PROVIDERS.linkup.priceUsd}) or exa ($${SEARCH_PROVIDERS.exa.priceUsd}; the only one that keeps a copy of your queries).`,
+    parse: oneOf(...SEARCH_PROVIDER_NAMES),
+  }),
+  SEARCH_FALLBACK: setting({
+    group: "Tools",
+    default: "linkup",
+    help: "Provider for a reply's further searches, and for a first search that fails or finds nothing: linkup, or none. Ignored when it is SEARCH_PROVIDER.",
+    parse: oneOf("linkup", "none"),
+  }),
+  SEARCH_FALLBACK_PER_DAY: setting({
+    group: "Tools",
+    default: "20",
+    help: `Fallback searches per UTC day, at most 2 in one reply ($${SEARCH_PROVIDERS.linkup.priceUsd} each with linkup, so 20 is at most $${(20 * SEARCH_PROVIDERS.linkup.priceUsd).toFixed(2)} a day). 0 turns the fallback off.`,
+    parse: wholeNumber(0),
   }),
   FETCH_MAX_CHARS: setting({
     group: "Tools",
@@ -384,6 +397,17 @@ export function readSettings<K extends SettingKey>(env: Env, keys: readonly K[])
   return values as Pick<Values, K>;
 }
 
+/**
+ * The provider for a reply's further searches, and for a first search that fails or finds nothing; null when there is
+ * none: SEARCH_FALLBACK=none, the same provider as SEARCH_PROVIDER, or SEARCH_FALLBACK_PER_DAY=0.
+ */
+export function searchFallbackOf(
+  s: Pick<Values, "SEARCH_PROVIDER" | "SEARCH_FALLBACK" | "SEARCH_FALLBACK_PER_DAY">,
+): SearchProvider | null {
+  if (s.SEARCH_FALLBACK === "none" || s.SEARCH_FALLBACK === s.SEARCH_PROVIDER || s.SEARCH_FALLBACK_PER_DAY === 0)
+    return null;
+  return s.SEARCH_FALLBACK;
+}
 export interface Config {
   discordToken: string;
   guildIds: Set<string>;
@@ -410,7 +434,10 @@ export interface Config {
   };
   tools: {
     maxCalls: number;
-    searchProvider: string;
+    searchProvider: SearchProvider;
+    /** Null when there is none: SEARCH_FALLBACK=none, the same as SEARCH_PROVIDER, or SEARCH_FALLBACK_PER_DAY=0. */
+    searchFallback: SearchProvider | null;
+    searchFallbackPerDay: number;
     fetchMaxChars: number;
     transcriptMaxChars: number;
     imagesPerDay: number;
@@ -479,6 +506,8 @@ export function loadConfig(env: Env = process.env): Config {
     tools: {
       maxCalls: s.MAX_TOOL_CALLS,
       searchProvider: s.SEARCH_PROVIDER,
+      searchFallback: searchFallbackOf(s),
+      searchFallbackPerDay: s.SEARCH_FALLBACK_PER_DAY,
       fetchMaxChars: s.FETCH_MAX_CHARS,
       transcriptMaxChars: s.TRANSCRIPT_MAX_CHARS,
       imagesPerDay: s.IMAGES_PER_DAY,

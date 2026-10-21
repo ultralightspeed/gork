@@ -3,8 +3,7 @@ import type { Config } from "./config.ts";
 import { type ChatMessage, fitImages, forWire, type ToolImage, toolImagesMessage } from "./context.ts";
 import type { ScheduledEvent } from "./event.ts";
 import type { Poll } from "./poll.ts";
-import { SEARCH_COST_USD } from "./search.ts";
-import { type Attachment, type ReplyTally, type ToolResult, toolDefs } from "./tools.ts";
+import { type Attachment, type ReplyTally, type ToolResult, type ToolTurn, toolDefs } from "./tools.ts";
 
 export type LlmResult = {
   text: string;
@@ -20,6 +19,8 @@ export type LlmResult = {
   event: ScheduledEvent | null;
   /** A tool asked for this reply to ping @everyone/@here. */
   pingEveryone: boolean;
+  /** Web searches made on each provider: the cheap one, and the fallback. */
+  searches: { primary: number; fallback: number };
 };
 
 /** An LLM HTTP failure; carries what was reserved so the caller can settle the ledger. */
@@ -140,7 +141,7 @@ export async function answer(
   messages: ChatMessage[],
   deps: {
     fetch?: typeof fetch;
-    runTool: (name: string, args: unknown, tally: ReplyTally) => Promise<ToolResult>;
+    runTool: (name: string, args: unknown, tally: ReplyTally, turn: ToolTurn) => Promise<ToolResult>;
     reserve: (usd: number) => boolean;
     /** The clock, in ms; injectable for tests. */
     now?: () => number;
@@ -162,6 +163,17 @@ export async function answer(
     toolCost = 0,
     reserved = 0,
     estimated = false;
+  const searches = { calls: 0, primary: 0, fallback: 0 };
+  // A tool holds what it is about to spend through this, so the hold is part of the reply's reservation and is settled
+  // with the rest whatever the tool does next (spends it, spends less, or fails).
+  const turn: ToolTurn = {
+    reserve: (usd) => {
+      if (!deps.reserve(usd)) return false;
+      reserved += usd;
+      return true;
+    },
+    deadline,
+  };
   const result = (text: string, outOfBudget = false): LlmResult => ({
     text,
     promptTokens: pt,
@@ -175,12 +187,13 @@ export async function answer(
     poll,
     event,
     pingEveryone,
+    searches: { primary: searches.primary, fallback: searches.fallback },
   });
   for (;;) {
     const toolsOn = toolCalls < cfg.tools.maxCalls && now() < deadline;
     // What is sent: the conversation with its oldest video frames dropped past the per-request image limit.
     const sent = fitImages(convo);
-    // Searches are reserved one by one as they run, below: a round can make several.
+    // Tools reserve their own spending as they run, through `turn`: a round can make several searches.
     const roundUsd = (estTokens(sent) * cfg.llm.priceInPerM + MAX_OUTPUT_TOKENS * cfg.llm.priceOutPerM) / 1e6;
     if (!deps.reserve(roundUsd)) return result("", true);
     reserved += roundUsd;
@@ -210,15 +223,23 @@ export async function answer(
       let content: string;
       if (toolCalls > cfg.tools.maxCalls) content = "Tool limit reached. Answer with what you have.";
       else if (now() >= deadline) content = "Out of time. Answer with what you have.";
-      else if (call.function?.name === "web_search" && cfg.billing !== "free" && !deps.reserve(SEARCH_COST_USD))
-        content = "The daily budget is used up, so that search wasn't run. Answer with what you have.";
       else {
-        if (call.function?.name === "web_search" && cfg.billing !== "free") reserved += SEARCH_COST_USD;
-        const r = await deps.runTool(call.function?.name ?? "", call.function?.arguments ?? "", {
-          images: attachments.length,
-          polls: poll ? 1 : 0,
-          events: event ? 1 : 0,
-        });
+        const name = call.function?.name ?? "";
+        const r = await deps.runTool(
+          name,
+          call.function?.arguments ?? "",
+          {
+            images: attachments.length,
+            polls: poll ? 1 : 0,
+            events: event ? 1 : 0,
+            searches: searches.calls,
+            fallbackSearches: searches.fallback,
+          },
+          turn,
+        );
+        if (name === "web_search") searches.calls++;
+        searches.primary += r.search?.primary ?? 0;
+        searches.fallback += r.search?.fallback ?? 0;
         content = r.content;
         toolCost += r.costUsd;
         if (r.images) roundImages.push(...r.images);

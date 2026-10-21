@@ -2,6 +2,7 @@
 // two runtime tokens by permission-group name, and probing that each token can do what gork needs.
 // Throws CliError, never prints, and never puts a token in a message. Every call takes `fetch`, so tests fake it.
 
+import type { SearchProvider } from "../../src/search-providers.ts";
 import { CliError } from "./errors.ts";
 import type { Api } from "./gateway.ts";
 import { jsonWithout } from "./text.ts";
@@ -401,22 +402,31 @@ export type ProbeOptions = {
   gatewayId: string;
   billing: "credits" | "free";
   model: string;
-  searchProvider: string;
+  searchProvider: SearchProvider;
+  /** Also search with this provider (SEARCH_FALLBACK), when web search is tested. */
+  fallbackProvider?: SearchProvider | null;
   /** Credits mode only: false leaves out the web search, the one probe that costs money. Default true. */
   search?: boolean;
 };
 
 /**
  * One cheap call per capability with the runtime token: a 1-token chat completion (through the gateway in credits
- * mode, direct in free mode), one web search (credits mode only), and one page read. A refusal becomes
- * "missing: <group names>". Search costs about $0.00025; the others are free or a fraction of a neuron.
+ * mode, direct in free mode), one web search per provider asked for (credits mode only), and one page read. A refusal
+ * becomes "missing: <group names>". A search costs its provider's price (src/search-providers.ts); the others are free
+ * or a fraction of a neuron.
  */
 export async function probeRunToken(o: ProbeOptions, fetchFn: typeof fetch): Promise<Probe[]> {
   const needs = runNeeds(o.billing);
   const acct = `/accounts/${o.accountId}`;
   const out: Probe[] = [];
-  const run = async (capability: Probe["capability"], path: string, body: unknown, headers: Record<string, string>) => {
-    const ctx: Context = { capability, groups: names(needs, capability as Need["probe"]), billing: o.billing };
+  const run = async (
+    capability: Probe["capability"],
+    path: string,
+    body: unknown,
+    headers: Record<string, string>,
+    probe = capability as Need["probe"],
+  ) => {
+    const ctx: Context = { capability, groups: names(needs, probe), billing: o.billing };
     try {
       out.push(classify(await raw(o.token, "POST", `${acct}${path}`, fetchFn, body, headers), ctx));
     } catch (err) {
@@ -437,6 +447,15 @@ export async function probeRunToken(o: ProbeOptions, fetchFn: typeof fetch): Pro
       { query: "test", provider: o.searchProvider, limit: 1, options: { gateway: { id: o.gatewayId } } },
       {},
     );
+    if (o.fallbackProvider) {
+      await run(
+        `web search fallback (${o.fallbackProvider})`,
+        "/ai/websearch",
+        { query: "test", provider: o.fallbackProvider, limit: 1, options: { gateway: { id: o.gatewayId } } },
+        {},
+        "web search",
+      );
+    }
   }
   await run("page reading", "/browser-rendering/markdown", { url: "https://example.com" }, {});
   return out;

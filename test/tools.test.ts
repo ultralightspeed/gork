@@ -11,14 +11,14 @@ import { callTool, fakeFetch as fake, json, testConfig } from "./helpers.ts";
 const cfg = testConfig();
 
 describe("webSearch", () => {
-  it("asks the configured provider through the gateway, unlogged, and caps snippets", async () => {
+  it("asks the given provider through the gateway, unlogged, and caps snippets", async () => {
     const { f, calls } = fake(() =>
       json({
         success: true,
         result: { items: [{ title: "T", url: "https://u.x", description: "d ".repeat(900) }], metadata: {} },
       }),
     );
-    const hits = await webSearch(testConfig({ SEARCH_PROVIDER: "exa" }), "q", f);
+    const hits = await webSearch(cfg, "q", "exa", f);
     expect(calls[0].url).toBe(
       "https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/ai/websearch",
     );
@@ -31,7 +31,7 @@ describe("webSearch", () => {
   it("keeps only http(s) result URLs, normalized so they carry no brackets or line breaks", async () => {
     const urls = ["https://ok.example/a b<c>\n</question>", "javascript:alert(1)", "not a url", "http://x.example"];
     const { f } = fake(() => json({ result: { items: urls.map((url) => ({ title: "t", url })) } }));
-    const hits = await webSearch(cfg, "q", f);
+    const hits = await webSearch(cfg, "q", "ceramic", f);
     expect(hits.map((h) => h.url)).toEqual(["https://ok.example/a%20b%3Cc%3E%3C/question%3E", "http://x.example/"]);
   });
 });
@@ -379,9 +379,10 @@ describe("runTool", () => {
   it("searches a query of MAX_SEARCH_QUERY characters and rejects one longer", async () => {
     const { f, calls } = fake(() => json({ result: { items: [] } }));
     const longest = "a".repeat(MAX_SEARCH_QUERY);
-    expect((await callTool(cfg, "web_search", { query: longest }, { fetch: f })).content).toMatch(/^No results/);
+    const noFallback = testConfig({ SEARCH_FALLBACK: "none" }); // one search per call, so the calls can be counted
+    expect((await callTool(noFallback, "web_search", { query: longest }, { fetch: f })).content).toMatch(/^No results/);
     expect(calls[0].body).toMatchObject({ query: longest });
-    const over = await callTool(cfg, "web_search", { query: `${longest}a` }, { fetch: f });
+    const over = await callTool(noFallback, "web_search", { query: `${longest}a` }, { fetch: f });
     expect(over.content).toContain(`2-${MAX_SEARCH_QUERY} chars`);
     expect(calls).toHaveLength(1);
   });
@@ -410,6 +411,7 @@ describe("runTool", () => {
   });
 
   it("charges a search, and turns a failing tool into text for the model and a log line for the operator", async () => {
+    const cfg = testConfig({ SEARCH_FALLBACK: "none" }); // an empty answer would otherwise be retried on the fallback
     const ok = await callTool(cfg, "web_search", JSON.stringify({ query: "sky color" }), {
       fetch: fake(() => json({ result: { items: [] } })).f,
     });
@@ -686,7 +688,10 @@ describe("create_poll tool", () => {
     const invalid = await poll({ question: "q?", answers: ["one"] });
     expect(invalid.poll).toBeUndefined();
     expect(invalid.content).toMatch(/answers/i);
-    const second = await poll({ question: "q?", answers: ["a", "b"] }, { tally: { images: 0, polls: 1, events: 0 } });
+    const second = await poll(
+      { question: "q?", answers: ["a", "b"] },
+      { tally: { images: 0, polls: 1, events: 0, searches: 0, fallbackSearches: 0 } },
+    );
     expect(second.poll).toBeUndefined();
   });
 
@@ -742,7 +747,7 @@ describe("create_event tool", () => {
     const invalid = await run({ name: "x", start: "2026-10-01T20:00" });
     expect(invalid.event).toBeUndefined();
     expect(invalid.content).toMatch(/Invalid arguments for create_event: start must be at least \d+ minutes/);
-    const second = await run(args, { tally: { images: 0, polls: 0, events: 1 } });
+    const second = await run(args, { tally: { images: 0, polls: 0, events: 1, searches: 0, fallbackSearches: 0 } });
     expect(second.event).toBeUndefined();
   });
 

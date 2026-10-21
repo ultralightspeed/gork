@@ -296,7 +296,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   }
   const overview = video ? videoOverview(video.frames, room).length : 0;
   log(
-    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? 1 : 0} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
+    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} search=${result.searches.primary}+${result.searches.fallback} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? 1 : 0} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
   );
   return { text, files, poll, event, pingEveryone: result.pingEveryone && req.mayPingEveryone };
 }

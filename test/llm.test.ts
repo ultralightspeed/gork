@@ -8,7 +8,6 @@ import {
   MAX_OUTPUT_TOKENS,
   REPLY_DEADLINE_SECONDS,
 } from "../src/llm.ts";
-import { SEARCH_COST_USD } from "../src/search.ts";
 import type { ReplyTally } from "../src/tools.ts";
 import { fakeFetch, testConfig } from "./helpers.ts";
 
@@ -250,7 +249,7 @@ describe("answer", () => {
         fetch: f,
         runTool: async () => ({ content: "r", costUsd: 0, images: [frame(1), frame(2), frame(3)] }),
         reserve: (usd) => {
-          if (usd !== SEARCH_COST_USD) seen.push(usd); // model rounds only; the search reserves its own
+          seen.push(usd); // model rounds only: this test's tools reserve nothing
           return true;
         },
       });
@@ -460,35 +459,89 @@ describe("answer", () => {
   });
 });
 
-describe("answer: web searches in one round", () => {
-  it("reserves every search it runs, and runs none the budget refuses", async () => {
-    const three = {
-      content: null,
-      tool_calls: ["a", "b", "c"].map((id) => ({
-        id,
-        type: "function",
-        function: { name: "web_search", arguments: '{"query":"x y"}' },
-      })),
-    };
-    const { f } = scripted([completion(three), completion({ content: "ok" })]);
-    const reserved: number[] = [];
-    let ran = 0;
-    let left = 1; // the budget has room for one search
+describe("answer: what a tool may reserve, and what it is told", () => {
+  const searches = (...ids: string[]) => ({
+    content: null,
+    tool_calls: ids.map((id) => ({
+      id,
+      type: "function",
+      function: { name: "web_search", arguments: '{"query":"x y"}' },
+    })),
+  });
+
+  it("counts what a tool reserves in reservedUsd, so the reply settles the hold even when the tool spends nothing", async () => {
+    const { f } = scripted([completion(searches("a")), completion({ content: "ok" })]);
+    const budget: number[] = [];
     const r = await answer(cfg, msgs, {
       fetch: f,
-      runTool: async () => {
-        ran++;
-        return { content: "hits", costUsd: SEARCH_COST_USD };
+      runTool: async (_name, _args, _tally, turn) => {
+        expect(turn.reserve(0.005)).toBe(true);
+        return { content: "web_search failed.", costUsd: 0 };
       },
       reserve: (usd) => {
-        if (usd === SEARCH_COST_USD && left-- <= 0) return false;
-        reserved.push(usd);
+        budget.push(usd);
         return true;
       },
     });
-    expect(ran).toBe(1);
-    expect(reserved.filter((u) => u === SEARCH_COST_USD)).toHaveLength(1);
-    expect(r.reservedUsd).toBeGreaterThanOrEqual(r.costUsd);
+    expect(budget).toContain(0.005);
+    expect(r.reservedUsd).toBeCloseTo(
+      budget.reduce((a, b) => a + b, 0),
+      10,
+    );
+  });
+
+  it("doesn't count a reservation the budget refused", async () => {
+    const { f } = scripted([completion(searches("a")), completion({ content: "ok" })]);
+    let modelRounds = 0;
+    const r = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async (_name, _args, _tally, turn) => {
+        expect(turn.reserve(0.005)).toBe(false);
+        return { content: "The daily budget is used up, so that search wasn't run.", costUsd: 0 };
+      },
+      reserve: (usd) => {
+        if (usd === 0.005) return false;
+        modelRounds += usd;
+        return true;
+      },
+    });
+    expect(r.reservedUsd).toBeCloseTo(modelRounds, 10);
+  });
+
+  it("tells each search how many the reply already ran and how many used the fallback, and totals them", async () => {
+    const { f } = scripted([completion(searches("a", "b")), completion(searches("c")), completion({ content: "ok" })]);
+    const seen: Array<[number, number]> = [];
+    const r = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async (_name, _args, tally) => {
+        seen.push([tally.searches, tally.fallbackSearches]);
+        const first = tally.searches === 0;
+        return { content: "hits", costUsd: 0, search: { primary: first ? 1 : 0, fallback: first ? 0 : 1 } };
+      },
+      reserve: yes,
+    });
+    expect(seen).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 1],
+    ]);
+    expect(r.searches).toEqual({ primary: 1, fallback: 2 });
+  });
+
+  it("gives a tool the reply's deadline", async () => {
+    const { f } = scripted([completion(searches("a")), completion({ content: "ok" })]);
+    const start = 5_000_000;
+    let deadline = 0;
+    await answer(cfg, msgs, {
+      fetch: f,
+      now: () => start,
+      runTool: async (_name, _args, _tally, turn) => {
+        deadline = turn.deadline;
+        return { content: "hits", costUsd: 0 };
+      },
+      reserve: yes,
+    });
+    expect(deadline).toBe(start + REPLY_DEADLINE_SECONDS * 1000);
   });
 });
 

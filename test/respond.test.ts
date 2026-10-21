@@ -88,6 +88,7 @@ const answered = (over: Partial<LlmResult> = {}): LlmResult => ({
   poll: null,
   event: null,
   pingEveryone: false,
+  searches: { primary: 0, fallback: 0 },
   ...over,
 });
 /** What a reply carries when nothing generated goes out. */
@@ -915,5 +916,21 @@ describe("respond: images that can't be downloaded", () => {
     expect(JSON.stringify(sent.messages[1].content)).toContain(
       "1 image attached to the question or replied-to message couldn't be downloaded",
     );
+  });
+});
+
+describe("respond: the reply log line", () => {
+  it("counts the reply's searches on each provider, cheap first, and holds no query or message text", async () => {
+    const lines: string[] = [];
+    const { req, deps } = setup({
+      deps: {
+        log: (line) => lines.push(line),
+        answer: async () => answered({ toolCalls: 3, searches: { primary: 1, fallback: 2 } }),
+      },
+    });
+    await respond(req, deps);
+    const reply = lines.find((l) => l.startsWith("reply "));
+    expect(reply).toMatch(/ tools=3 search=1\+2 /);
+    expect(reply).not.toContain(req.question.content);
   });
 });

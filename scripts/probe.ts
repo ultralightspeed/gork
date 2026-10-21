@@ -4,9 +4,10 @@
 import { pathToFileURL } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import { withoutSecrets } from "../src/cf.ts";
-import { CREDITS_MODEL, FREE_MODEL, readSettings, SettingsError } from "../src/config.ts";
+import { CREDITS_MODEL, FREE_MODEL, readSettings, SettingsError, searchFallbackOf } from "../src/config.ts";
 import { type ChatMessage, forWire, toolImagesMessage } from "../src/context.ts";
 import { distrustRoots, OLD_NODE_WARNING } from "../src/distrust.ts";
+import { type SearchProvider, searchPrice } from "../src/search-providers.ts";
 import { YOUTUBE_CLIENT } from "../src/youtube.ts";
 
 type Env = Record<string, string | undefined>;
@@ -16,7 +17,9 @@ interface ProbePlan {
   accountId: string;
   model: string;
   gatewayId: string;
-  searchProvider: string;
+  searchProvider: SearchProvider;
+  /** The fallback provider (SEARCH_FALLBACK), or null when there is none; probed too. */
+  searchFallback: SearchProvider | null;
   /** The chat call's extra headers: the gateway ones in credits mode, none in free mode. */
   chatHeaders: Record<string, string>;
   /** Web search is paid and credits-only. */
@@ -26,7 +29,14 @@ interface ProbePlan {
 /** What to probe, from the same settings the bot reads. Throws SettingsError on a bad value. */
 export function planProbes(env: Env): ProbePlan {
   // The account id goes into the URL path, so a set one is validated like the bot does (blank is main's problem).
-  const keys = ["BILLING_MODE", "AI_GATEWAY_ID", "SEARCH_PROVIDER", "LLM_MODEL"] as const;
+  const keys = [
+    "BILLING_MODE",
+    "AI_GATEWAY_ID",
+    "SEARCH_PROVIDER",
+    "SEARCH_FALLBACK",
+    "SEARCH_FALLBACK_PER_DAY",
+    "LLM_MODEL",
+  ] as const;
   const s = env.CF_ACCOUNT_ID?.trim()
     ? readSettings(env, [...keys, "CF_ACCOUNT_ID"])
     : { ...readSettings(env, keys), CF_ACCOUNT_ID: "" };
@@ -37,6 +47,7 @@ export function planProbes(env: Env): ProbePlan {
     model: s.LLM_MODEL || (free ? FREE_MODEL : CREDITS_MODEL),
     gatewayId: s.AI_GATEWAY_ID,
     searchProvider: s.SEARCH_PROVIDER,
+    searchFallback: searchFallbackOf(s),
     chatHeaders: free ? {} : { "cf-aig-gateway-id": s.AI_GATEWAY_ID, "cf-aig-collect-log-payload": "false" },
     webSearch: !free,
   };
@@ -252,29 +263,33 @@ async function main(): Promise<number> {
   }
 
   if (plan.webSearch) {
-    await show(
-      "Web Search",
-      fetch(`${base}/ai/websearch`, {
-        method: "POST",
-        headers: H,
-        body: JSON.stringify({
-          query: "Cloudflare Web Search API",
-          provider: plan.searchProvider,
-          limit: 2,
-          options: { gateway: { id: plan.gatewayId } },
+    // The provider, then the fallback if there is one: a search each, at each provider's price.
+    const providers = [plan.searchProvider, ...(plan.searchFallback ? [plan.searchFallback] : [])];
+    for (const [i, provider] of providers.entries()) {
+      await show(
+        `Web Search (${provider}${i ? ", the fallback" : ""}, $${searchPrice(provider)})`,
+        fetch(`${base}/ai/websearch`, {
+          method: "POST",
+          headers: H,
+          body: JSON.stringify({
+            query: "Cloudflare Web Search API",
+            provider,
+            limit: 2,
+            options: { gateway: { id: plan.gatewayId } },
+          }),
         }),
-      }),
-      (j) => {
-        const r = j.result ?? j;
-        return {
-          envelope: j.result ? "result" : "raw",
-          item_keys: Object.keys(r.items?.[0] ?? {}),
-          first_title: r.items?.[0]?.title,
-          description_chars: (r.items?.[0]?.description ?? "").length,
-          metadata: r.metadata,
-        };
-      },
-    );
+        (j) => {
+          const r = j.result ?? j;
+          return {
+            envelope: j.result ? "result" : "raw",
+            item_keys: Object.keys(r.items?.[0] ?? {}),
+            first_title: r.items?.[0]?.title,
+            description_chars: (r.items?.[0]?.description ?? "").length,
+            metadata: r.metadata,
+          };
+        },
+      );
+    }
   } else {
     console.log("\n== Web Search: skipped (BILLING_MODE=free has no web search)");
   }

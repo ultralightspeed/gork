@@ -347,7 +347,13 @@ describe("mintToken", () => {
 });
 
 describe("probeRunToken", () => {
-  const base = { accountId: ACCT, token: TOKEN, gatewayId: "gork", searchProvider: "ceramic", model: "@cf/zai-org/m" };
+  const base = {
+    accountId: ACCT,
+    token: TOKEN,
+    gatewayId: "gork",
+    searchProvider: "ceramic" as const,
+    model: "@cf/zai-org/m",
+  };
   const route = (over: Record<string, (c: Call) => Response> = {}) =>
     fakeFetch((c) => {
       for (const [key, fn] of Object.entries(over)) if (c.url.includes(key)) return fn(c);

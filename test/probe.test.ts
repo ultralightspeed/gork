@@ -10,6 +10,7 @@ describe("planProbes", () => {
     expect(p.chatHeaders).toEqual({ "cf-aig-gateway-id": "gork", "cf-aig-collect-log-payload": "false" });
     expect(p.webSearch).toBe(true);
     expect(p.searchProvider).toBe("ceramic");
+    expect(p.searchFallback).toBe("linkup");
   });
 
   it("uses AI_GATEWAY_ID, SEARCH_PROVIDER and LLM_MODEL when set", () => {
@@ -90,5 +91,12 @@ describe("the tool round-trip probe", () => {
 
   it("leaves the image out for a model that can't see", () => {
     expect(roundTripMessages(ask, call, null).map((x) => x.role)).toEqual(["user", "assistant", "tool"]);
+  });
+});
+
+describe("planProbes: the fallback search", () => {
+  it("follows the bot's rule: none when it is off, the provider itself, or 0 a day", () => {
+    for (const env of [{ SEARCH_FALLBACK: "none" }, { SEARCH_PROVIDER: "linkup" }, { SEARCH_FALLBACK_PER_DAY: "0" }])
+      expect(planProbes(env).searchFallback, JSON.stringify(env)).toBeNull();
   });
 });

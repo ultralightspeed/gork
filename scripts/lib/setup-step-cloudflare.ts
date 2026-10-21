@@ -210,7 +210,7 @@ function probeOptions(core: SessionCore, search = true) {
     gatewayId: core.cf.gatewayId,
     billing: c.billing,
     model: c.billing === "free" ? FREE_MODEL : CREDITS_MODEL,
-    searchProvider: SETTINGS.SEARCH_PROVIDER.default,
+    searchProvider: SETTINGS.SEARCH_PROVIDER.parse(SETTINGS.SEARCH_PROVIDER.default),
     search,
   };
 }

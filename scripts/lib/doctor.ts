@@ -14,6 +14,8 @@ import {
 } from "../../src/config.ts";
 import { parseMentions } from "../../src/mentions.ts";
 import { listPersonas, loadPersona } from "../../src/persona.ts";
+import { describeSearch } from "../../src/search.ts";
+import { SEARCH_PROVIDERS, searchPrice } from "../../src/search-providers.ts";
 import { ADMIN_NEEDS, probeAdminToken, probeRunToken, runNeeds } from "./cloudflare-setup.ts";
 import {
   canCreateEventsIn,
@@ -40,7 +42,7 @@ export type DoctorDeps = {
   fetch: typeof fetch;
   /** The folder holding persona presets and personas/custom.md. */
   personasDir: string;
-  /** Also run the probes that cost money (the web search, about $0.00025). Default: only the free checks. */
+  /** Also run the probes that cost money (a web search on each search provider). Default: only the free checks. */
   live?: boolean;
   /** Finds the container engine (Docker or Podman). Absent: the engine isn't checked. */
   engine?: () => Engine;
@@ -351,8 +353,17 @@ async function checkGateway(d: DoctorDeps, billing: Billing, account: string): P
 }
 
 async function checkRunToken(d: DoctorDeps, s: SettingsState, account: string, cfg: Config): Promise<Finding[]> {
-  const { found, ok, fail } = collector();
+  const { found, ok, warn, fail } = collector();
   const customLlm = !!envValue(d, "LLM_BASE_URL");
+  const fallback = cfg.tools.searchFallback;
+  if (s.billing === "credits") {
+    ok("search.providers", describeSearch(cfg));
+    if (SEARCH_PROVIDERS[cfg.tools.searchProvider].keepsQueries)
+      warn(
+        "search.keeps-queries",
+        `SEARCH_PROVIDER: ${cfg.tools.searchProvider} keeps a copy of your search queries; ceramic and linkup don't (zero data retention)`,
+      );
+  }
   try {
     const probes = await probeRunToken(
       {
@@ -362,6 +373,7 @@ async function checkRunToken(d: DoctorDeps, s: SettingsState, account: string, c
         billing: s.billing,
         model: cfg.llm.model,
         searchProvider: cfg.tools.searchProvider,
+        fallbackProvider: fallback,
         search: !!d.live,
       },
       d.fetch,
@@ -373,9 +385,12 @@ async function checkRunToken(d: DoctorDeps, s: SettingsState, account: string, c
       else fail(id, `CF_RUN_TOKEN, ${p.capability}: ${p.message}`);
     }
     if (s.billing === "credits" && !d.live) {
+      const prices = [cfg.tools.searchProvider, ...(fallback ? [fallback] : [])].map(searchPrice);
+      const cost = prices.reduce((a, b) => a + b, 0);
+      const what = prices.length > 1 ? "the two tests cost" : "the test costs";
       ok(
         "cloudflare.run:web-search",
-        "CF_RUN_TOKEN, web search: skipped, because each test costs about $0.00025; run `npm run doctor -- --live` to include it",
+        `CF_RUN_TOKEN, web search: skipped, because ${what} about $${Number(cost.toFixed(5))}; run \`npm run doctor -- --live\` to include it`,
       );
     }
   } catch (err) {

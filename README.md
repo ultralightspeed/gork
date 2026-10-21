@@ -110,7 +110,7 @@ Run these in a terminal opened in the gork folder: `npm run up` starts gork agai
 
 ## What it costs
 
-Usually a cent or two a day. The setup page asks which billing mode you want, and your answer is the `BILLING_MODE` setting.
+Usually a few cents a day: a cent or two for replies, and up to 10 cents more on days with many web searches. The setup page asks which billing mode you want, and your answer is the `BILLING_MODE` setting.
 
 - Credits mode uses prepaid Cloudflare credits (the minimum top-up is $10). Everything works, including web search. gork stops for the day at a daily budget (`DAILY_BUDGET_USD`, 50 cents by default), and the AI Gateway gets a spend limit of about 1.2 times that as a second line of defense.
 - Free mode uses only Cloudflare's free daily Workers AI allowance, on the Workers Free plan, and costs nothing. Its limits: roughly 25 to 100 replies a day, no web search, a smaller model that can't see images (videos give only their transcript), and once the day's allowance is gone gork says so and answers nothing until 00:00 UTC. See [docs/setup.md](docs/setup.md#free-mode-in-detail).
@@ -122,13 +122,16 @@ Rough prices (they change, so check Cloudflare's pricing pages):
 | What | Cost |
 |---|---|
 | A normal reply (default model) | about $0.001 to $0.002 |
-| One web search | $0.00025 ($0.25 per 1,000 searches) |
+| A reply's first web search (Ceramic) | $0.00025 ($0.25 per 1,000 searches) |
+| Each further search in a reply, or a retry when the first fails or finds nothing (Linkup) | $0.005, at most 2 a reply and 20 a day ($0.10) |
 | Page reads, YouTube transcripts, polls, events | nothing extra |
 | Safety check, generated images, video speech-to-text | see below; on Workers Paid about $0.0005 for the speech in a full 60-second clip |
 
+Web search tries [Ceramic](https://ceramic.ai/) first because it is cheap, but its index is weak on new things, such as a game that came out last month. So a reply's further searches, and a first search that fails or finds nothing, go to [Linkup](https://www.linkup.so/), which costs 20 times as much. The model searching again is the sign that the first results missed. Set `SEARCH_FALLBACK=none` to use only Ceramic, or `SEARCH_PROVIDER=linkup` to use Linkup for every search. Neither keeps a copy of your search queries; Exa, the third choice, does. When gork starts, its log says which providers it uses and the most the fallback can cost a day.
+
 The safety check, image generation and video speech-to-text call Workers AI directly, in both modes. They never use your credits, and the gateway's spend limit does not cover them. On the Workers Free plan they use the free daily allowance and cost nothing. On Workers Paid, Cloudflare bills what goes past that allowance.
 
-At the default 50-cent cap, gork can answer roughly 250 to 500 simple replies a day, so $10 of credits covers about 5,000 to 10,000 replies. A reply that searches several times or reads a long transcript costs more. Keep auto top-up off in Cloudflare: on the Workers Free plan your credit balance is then the most a leaked token could spend. On Workers Paid, a leaked runtime token could also run Workers AI models directly, billed to your account, so delete it in the Cloudflare dashboard if it leaks. Cloudflare may charge a small fee when you buy credits.
+At the default 50-cent cap, gork can answer roughly 250 to 500 simple replies a day, so $10 of credits covers about 5,000 to 10,000 simple replies. A reply that searches costs more, about a cent when it uses the fallback, and so does one that reads a long transcript, so a server that searches a lot gets fewer replies for the same money. Keep auto top-up off in Cloudflare: on the Workers Free plan your credit balance is then the most a leaked token could spend. On Workers Paid, a leaked runtime token could also run Workers AI models directly, billed to your account, so delete it in the Cloudflare dashboard if it leaks. Cloudflare may charge a small fee when you buy credits.
 
 ## More
 

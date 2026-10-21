@@ -116,9 +116,9 @@ The [releases page](https://github.com/ultralightspeed/gork/releases) says what 
 
 ## Checking things
 
-- `npm run doctor` prints `ok`, `warn` or `FAIL` for each check. A `warn` is advice. A `FAIL` means something must be fixed. By default it runs only free checks; in credits mode that includes a one-token chat call, which is almost free. `npm run doctor -- --live` also runs a paid web search to test the runtime token, which costs about $0.00025. It also says which container engine it found and which image `npm run up` will start.
+- `npm run doctor` prints `ok`, `warn` or `FAIL` for each check. A `warn` is advice. A `FAIL` means something must be fixed. By default it runs only free checks; in credits mode that includes a one-token chat call, which is almost free. `npm run doctor -- --live` also runs a paid web search on each search provider to test the runtime token, which costs about $0.00525 with the defaults (Ceramic and Linkup). In credits mode it also says which providers web search uses and the most the fallback can cost a day. It also says which container engine it found and which image `npm run up` will start.
 - `npm run -s doctor -- --json` prints the same checks as one JSON document, `{ "ok": true, "checks": [{ "id", "level", "message" }] }`, for scripts and tools.
-- `npm run probe` skips web search in free mode. In credits mode it makes one paid web search and a chat call. It prints shortened responses, without tokens or signed links.
+- `npm run probe` skips web search in free mode. In credits mode it makes one paid web search on each search provider (about $0.00525 with the defaults) and a few chat calls. It prints shortened responses, without tokens or signed links.
 - `npm run calibrate` runs a few fixed requests (game talk, news questions and two that must be blocked) through the safety screen exactly as the bot does, and prints each verdict, with the score for the blocked ones. It needs a complete `.env`, calls Workers AI directly, and exits with an error if any verdict is not the expected one. Use it after you change `GUARD_THRESHOLD`. The expected verdicts assume the default `GUARD_BLOCK`.
 
 ## Keeping gork online

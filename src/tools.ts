@@ -29,7 +29,7 @@ import {
   type Poll,
   parsePoll,
 } from "./poll.ts";
-import { formatHits, MAX_SEARCH_QUERY, MAX_URL, SEARCH_COST_USD, SEARCH_LIMIT, webSearch } from "./search.ts";
+import { formatHits, MAX_SEARCH_QUERY, MAX_URL, SEARCH_LIMIT, searchWithFallback } from "./search.ts";
 import { formatLocalNow } from "./time.ts";
 import { VIDEO_FRAMES_PER_CALL, VIDEO_MAX_FRAMES_SHOWN, VIDEO_OVERVIEW_FRAMES, type VideoWatch } from "./videolook.ts";
 import { fetchPage, READ_GAP_MS, ReadPacer } from "./webfetch.ts";
@@ -52,17 +52,41 @@ export type ToolResult = {
   pingEveryone?: true;
   /** Images for the model to look at (llm.ts delivers them in a user message after the round's tool messages). */
   images?: ToolImage[];
+  /** web_search only: searches it made on each provider (see searchWithFallback). */
+  search?: { primary: number; fallback: number };
 };
 
 /** State shared by every reply, created once at startup. */
-type ToolState = { readPacer: ReadPacer; imageCounter: DailyCounter; transcripts: TranscriptCache };
+type ToolState = {
+  readPacer: ReadPacer;
+  imageCounter: DailyCounter;
+  transcripts: TranscriptCache;
+  /** Fallback web searches today (SEARCH_FALLBACK_PER_DAY). */
+  searchFallbacks: DailyCounter;
+};
 /** What the current reply has already produced, for the per-reply limits. */
-export type ReplyTally = { images: number; polls: number; events: number };
+export type ReplyTally = {
+  images: number;
+  polls: number;
+  events: number;
+  /** web_search calls run so far. */
+  searches: number;
+  /** Of the searches made so far, how many went to the fallback provider. */
+  fallbackSearches: number;
+};
+/** What a tool call gets from the reply it belongs to. */
+export type ToolTurn = {
+  /** Holds money in the daily budget before spending it; llm.ts counts every hold in the reply's reservation. */
+  reserve: (usd: number) => boolean;
+  /** When the reply must be answered by, in ms. */
+  deadline: number;
+};
 
 export const newToolState = (cfg: Config): ToolState => ({
   readPacer: new ReadPacer(),
   imageCounter: new DailyCounter(cfg.tools.imagesPerDay),
   transcripts: new TranscriptCache(),
+  searchFallbacks: new DailyCounter(cfg.tools.searchFallbackPerDay),
 });
 
 const MAX_IMAGES_PER_REPLY = 2;
@@ -94,7 +118,7 @@ type ToolContext = {
   links: LinkSet;
   /** The clock, in ms; injectable for tests. */
   now: () => number;
-};
+} & ToolTurn;
 type Tool = {
   /** What the model sees. */
   def: ReturnType<typeof fn>;
@@ -140,9 +164,24 @@ const allTools = (cfg: Config): Tool[] => [
           costUsd: 0,
         };
       }
-      const hits = await webSearch(cfg, q, ctx.fetch);
-      for (const h of hits) ctx.links.add(h.url);
-      return { content: formatHits(q, hits), costUsd: SEARCH_COST_USD };
+      const r = await searchWithFallback(cfg, q, {
+        earlier: ctx.tally.searches,
+        fallbacksEarlier: ctx.tally.fallbackSearches,
+        takeFallback: () => ctx.state.searchFallbacks.take(),
+        reserve: ctx.reserve,
+        msLeft: ctx.deadline - ctx.now(),
+        fetch: ctx.fetch,
+        log: ctx.log,
+      });
+      // Every result can be opened by web_fetch, whichever provider found it.
+      for (const h of r.hits ?? []) ctx.links.add(h.url);
+      const content =
+        r.refused === "budget"
+          ? "The daily budget is used up, so that search wasn't run. Answer with what you have."
+          : r.refused === "failed"
+            ? "web_search failed. Try a different query or answer from what you have, saying you couldn't check."
+            : formatHits(q, r.hits ?? []);
+      return { content, costUsd: r.costUsd, search: r.used };
     },
   },
   {
@@ -397,6 +436,10 @@ export async function runTool(
     /** The links this reply may open (see ToolContext); none when not given. */
     links?: LinkSet;
     now?: () => number;
+    /** Budget holds (see ToolTurn); without one, every hold is granted. */
+    reserve?: (usd: number) => boolean;
+    /** The reply's deadline, in ms; none when not given. */
+    deadline?: number;
   },
 ): Promise<ToolResult> {
   let args: Record<string, unknown>;
@@ -416,7 +459,7 @@ export async function runTool(
     return await tool.run(args, {
       fetch: deps.fetch ?? fetch,
       state: deps.state,
-      tally: deps.tally ?? { images: 0, polls: 0, events: 0 },
+      tally: deps.tally ?? { images: 0, polls: 0, events: 0, searches: 0, fallbackSearches: 0 },
       log: deps.log,
       mayPingEveryone: deps.mayPingEveryone ?? false,
       mayCreateEvents: deps.mayCreateEvents ?? false,
@@ -425,6 +468,8 @@ export async function runTool(
       video: deps.video ?? null,
       links: deps.links ?? new LinkSet(),
       now: deps.now ?? Date.now,
+      reserve: deps.reserve ?? (() => true),
+      deadline: deps.deadline ?? Number.POSITIVE_INFINITY,
     });
   } catch (err) {
     deps.log?.(`tool ${name} failed: ${describeError(err)}`);

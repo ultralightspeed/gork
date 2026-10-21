@@ -30,6 +30,7 @@ import { mayPingEveryone, NO_PINGS, pingFirstChunk } from "./mentions.ts";
 import { resolveNames, toMsg, videoSources } from "./message.ts";
 import { loadPersona, type Persona, SAFETY_REPLIES, systemPrompt } from "./persona.ts";
 import { type RespondDeps, respond } from "./respond.ts";
+import { describeSearch } from "./search.ts";
 import { newToolState, runTool } from "./tools.ts";
 import { extractWindow, pickVideos, readVideo } from "./video.ts";
 import { VideoWatch } from "./videolook.ts";
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
     return fatal("persona", describeError(err));
   }
   log(guardNotice(cfg.guard.block));
+  log(describeSearch(cfg));
   log(`persona: ${persona.source} (${persona.name}), ${persona.body.length} chars`);
   for (const w of persona.warnings) log(`persona warning: ${w}`);
   if (cfg.tools.videosPerDay > 0 && !existsSync(caBundle())) {

@@ -137,6 +137,7 @@ describe("doctor --json", () => {
       "discord.intent",
       "discord.servers",
       "cloudflare.gateway",
+      "search.providers",
       "cloudflare.run:chat",
       "cloudflare.run:page-reading",
       "cloudflare.run:web-search",
@@ -256,13 +257,21 @@ describe("doctor: the paid probe is opt-in", () => {
   it("runs the search with --live, then has nothing to say about skipping, and reports it failing", async () => {
     const t = run(ENV, {}, ["--live"]);
     const r = await t.go();
-    expect(search(t)).toHaveLength(1);
+    expect(search(t)).toHaveLength(2); // the provider and the fallback
     expect(r.out).toMatch(/CF_RUN_TOKEN, web search: works/);
     expect(r.out).not.toMatch(/skipped/i);
 
     const broken = await run(ENV, { search: () => json({}, 403) }, ["--live"]).go();
     expect(broken.code).toBe(1);
     expect(broken.text).toMatch(/FAIL.*web search/);
+  });
+
+  it("with --live, also tests the fallback provider, and says what the skipped tests would cost", async () => {
+    const t = run(ENV, {}, ["--live"]);
+    const r = await t.go();
+    expect(search(t).map((c) => c.body.provider)).toEqual(["ceramic", "linkup"]);
+    expect(r.out).toMatch(/CF_RUN_TOKEN, web search fallback \(linkup\): works/);
+    expect((await run().go()).out).toMatch(/skipped, because the two tests cost about \$0\.00525/);
   });
 
   it("refuses an option it doesn't know, before any network call", async () => {
@@ -272,6 +281,21 @@ describe("doctor: the paid probe is opt-in", () => {
     expect(r.text).toMatch(/unknown option/i);
     expect(r.text).toContain("--live");
     expect(t.calls).toEqual([]);
+  });
+});
+
+describe("doctor: web search settings", () => {
+  it("says which providers web search uses and the most the fallback can cost a day", async () => {
+    const r = await run().go();
+    expect(r.out).toMatch(
+      /ok +web search: ceramic \(\$0\.00025 a search\); .* use linkup \(\$0\.005\), up to 20 a day \(at most \$0\.10\)/,
+    );
+  });
+
+  it("warns that exa keeps a copy of the queries, which ceramic and linkup don't", async () => {
+    const r = await run({ ...ENV, SEARCH_PROVIDER: "exa" }).go();
+    expect(r.text).toMatch(/warn.*SEARCH_PROVIDER.*exa keeps a copy of your search queries/);
+    expect((await run().go()).text).not.toMatch(/keeps a copy/);
   });
 });
 

@@ -84,6 +84,11 @@ Creating an event counts as one tool call toward `MAX_TOOL_CALLS`, and it costs 
 
 gork posts a native Discord poll when the person asking has the Send Polls permission in that channel. As with events there is no wording check. gork needs Send Polls too, and its invite asks for it. One poll per reply. The question is up to 300 characters, with 2 to 10 answers of up to 55 characters each, and the poll runs for 24 hours unless the asker gives another length (up to 32 days). The poll's question and answers are screened together with gork's reply.
 
+## Web search
+
+In credits mode gork can search the web when an answer depends on current facts. A reply's first search goes to the provider in `SEARCH_PROVIDER` (Ceramic by default, cheap). Its further searches go to the one in `SEARCH_FALLBACK` (Linkup by default, better on new things but 20 times the price): gork searching again is the sign that the first results missed. A first search that fails on the provider's side or finds nothing is retried once on the fallback in the same step, which doesn't count as another tool call. The fallback is used at most 2 times in one reply and `SEARCH_FALLBACK_PER_DAY` times a day (20 by default); after that, and when the day's budget or the time left won't cover it, gork uses the cheap provider. Every result can be opened with a page read, whichever provider found it.
+
+The log line for each reply shows the searches as `search=<cheap>+<fallback>`, for example `search=1+1`. Search problems are logged with the provider and status, such as `web_search: ceramic found nothing; retried on linkup`, never with the query.
 ## Images
 
 gork can generate an image from a description. It posts the image only when the person asking has the Attach Files permission in that channel, and gork does too. Every generated image is screened before it is posted. If the screen blocks it or can't check it, the image is dropped and the reply says so.

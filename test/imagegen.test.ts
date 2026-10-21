@@ -86,7 +86,7 @@ describe("generate_image tool", () => {
       (
         await callTool(cfg, "generate_image", JSON.stringify({ prompt: "x y" }), {
           fetch: f,
-          tally: { images: 2, polls: 0, events: 0 },
+          tally: { images: 2, polls: 0, events: 0, searches: 0, fallbackSearches: 0 },
         })
       ).content,
     ).toMatch(/2 images/);
