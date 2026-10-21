@@ -35,10 +35,10 @@ export function fakeFetch(route: (call: Call) => Response | Promise<Response>) {
   return { f, calls };
 }
 
-/** runTool with fresh shared state; pass `state` in deps to keep it across calls (daily caps, read pacing). */
 /** A turn with no budget limit and no deadline, for tests that aren't about either. */
 export const NO_LIMITS = { reserve: () => true, deadline: Number.POSITIVE_INFINITY };
 
+/** runTool with fresh shared state; pass `state` in deps to keep it across calls (daily caps, read pacing). */
 export const callTool = (cfg: Config, name: string, args: unknown, deps: Partial<Parameters<typeof runTool>[3]> = {}) =>
   runTool(cfg, name, args, {
     state: newToolState(cfg),

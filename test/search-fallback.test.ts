@@ -324,3 +324,14 @@ describe("web_search: time and today's fallback allowance", () => {
     expect(r.content).not.toMatch(/budget is used up/);
   });
 });
+
+describe("web_search: out of time", () => {
+  it("says time ran out, not to try another query, when the fallback fails too close to the deadline for a second search", async () => {
+    const { f, calls } = providers({ linkup: 500 });
+    const now = 1_000_000;
+    const r = await search({ fetch: f, tally: tally({ searchesRun: 1 }), now: () => now, deadline: now + 5_000 });
+    expect(calls.map((c) => c.body.provider)).toEqual(["linkup"]);
+    expect(r.content).toMatch(/out of time/i);
+    expect(r.content).not.toMatch(/different query/);
+  });
+});

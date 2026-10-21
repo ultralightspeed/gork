@@ -51,23 +51,23 @@ export async function webSearch(
 /** What one web_search call did: its results (null when no search ran or every search failed) and what it cost. */
 export type SearchOutcome = {
   hits: SearchHit[] | null;
-  /** Why there are no hits: the budget refused the search, or the providers failed. */
-  refused?: "budget" | "failed";
+  /** Why there are no hits: the budget refused the search, the providers failed, or no time was left to retry. */
+  refused?: "budget" | "failed" | "time";
   costUsd: number;
   /** Searches made on each provider, counting failed ones (for the per-reply cap and the reply's log line). */
   used: { primary: number; fallback: number };
 };
 
 /**
- * One web_search call. The reply's first search goes to cfg.tools.searchProvider (cheap) and is retried once on the
- * fallback when the provider answers with a server error or finds nothing. A later search in the reply goes to the
- * fallback: the model searching again is its own sign that the cheap results missed. The fallback is used at most
- * MAX_FALLBACKS_PER_REPLY times a reply and as often as `takeFallback` allows a day; past that, or when the budget
- * or the time left won't cover it, the cheap provider is used. A second search in one call starts only if it can finish
- * before the reply's deadline. Each search is reserved at its provider's price just before it is sent (today's fallback
- * allowance is checked first, so no money is held for a fallback that can't run), and only searches that answered are
- * charged. Log lines name providers and statuses, never the
- * query or a provider's error body (which can repeat the query).
+ * One web_search call. The reply's first search goes to cfg.tools.searchProvider and is retried once on the fallback
+ * when the provider answers with a server error or finds nothing. A later search in the reply goes to the fallback: the
+ * model searching again is its own sign that the first results missed. The fallback is used at most
+ * MAX_FALLBACKS_PER_REPLY times a reply and as often as today's allowance permits; past that, or when the budget won't
+ * cover it, the search goes to searchProvider. A second search in one call (a retry, or searchProvider after a failed
+ * fallback) starts only if it can finish before the reply's deadline. Each search is reserved at its provider's price
+ * just before it is sent (today's fallback allowance is checked first, so no money is held for a fallback that can't
+ * run), and only searches that answered are charged. Log lines name providers and statuses, never the query or a
+ * provider's error body (which can repeat the query).
  */
 export async function searchWithFallback(
   cfg: Config,
@@ -108,8 +108,7 @@ export async function searchWithFallback(
       return { error: err instanceof Error && err.name === "TimeoutError" ? "timed out" : "failed", retry: false };
     }
   };
-  /** Whether 
-eedMs is left before the deadline, measured now. */
+  /** Whether `needMs` is left before the deadline, measured now. */
   const timeFor = (needMs: number) => o.deadline - o.now() >= needMs;
   /** Whether the fallback may be used now; reserves its price and claims today's slot when it may. */
   const mayFallBack = (needMs: number): boolean =>
@@ -127,8 +126,8 @@ eedMs is left before the deadline, measured now. */
     if ("hits" in r) return { hits: r.hits, costUsd, used };
     // The cheap provider is now a second search in this call, so it too must be able to finish in time.
     if (!timeFor(SEARCH_TIMEOUT_MS)) {
-      o.log?.(`web_search: ${fallback} ${r.error}`);
-      return { hits: null, refused: "failed", costUsd, used };
+      o.log?.(`web_search: ${fallback} ${r.error}; no time left to search ${primary}`);
+      return { hits: null, refused: "time", costUsd, used };
     }
     o.log?.(`web_search: ${fallback} ${r.error}; searched ${primary} instead`);
   }

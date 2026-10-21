@@ -179,9 +179,11 @@ const allTools = (cfg: Config): Tool[] => [
       const content =
         r.refused === "budget"
           ? "The daily budget is used up, so that search wasn't run. Answer with what you have."
-          : r.refused === "failed"
-            ? "web_search failed. Try a different query or answer from what you have, saying you couldn't check."
-            : formatHits(q, r.hits ?? []);
+          : r.refused === "time"
+            ? "web_search failed, and the reply is out of time for another search. Answer with what you have, saying you couldn't check."
+            : r.refused === "failed"
+              ? "web_search failed. Try a different query or answer from what you have, saying you couldn't check."
+              : formatHits(q, r.hits ?? []);
       return { content, costUsd: r.costUsd, search: r.used };
     },
   },
