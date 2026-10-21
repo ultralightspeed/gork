@@ -270,7 +270,7 @@ export const SETTINGS = {
   SEARCH_FALLBACK_PER_DAY: setting({
     group: "Tools",
     default: "20",
-    help: `Fallback searches per UTC day, at most 2 in one reply ($${SEARCH_PROVIDERS.linkup.priceUsd} each with linkup, so 20 is at most $${(20 * SEARCH_PROVIDERS.linkup.priceUsd).toFixed(2)} a day). 0 turns the fallback off.`,
+    help: `Fallback searches per UTC day, at most 2 in one reply ($${SEARCH_PROVIDERS.linkup.priceUsd} each with linkup, so 20 is about $${(20 * SEARCH_PROVIDERS.linkup.priceUsd).toFixed(2)} a day; the count restarts with gork, and DAILY_BUDGET_USD always caps spending). 0 turns the fallback off.`,
     parse: wholeNumber(0),
   }),
   FETCH_MAX_CHARS: setting({

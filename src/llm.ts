@@ -19,7 +19,7 @@ export type LlmResult = {
   event: ScheduledEvent | null;
   /** A tool asked for this reply to ping @everyone/@here. */
   pingEveryone: boolean;
-  /** Web searches made on each provider: the cheap one, and the fallback. */
+  /** Web searches made on each provider: SEARCH_PROVIDER, and the fallback. */
   searches: { primary: number; fallback: number };
 };
 
@@ -163,7 +163,7 @@ export async function answer(
     toolCost = 0,
     reserved = 0,
     estimated = false;
-  const searches = { calls: 0, primary: 0, fallback: 0 };
+  const searches = { run: 0, primary: 0, fallback: 0 };
   // A tool holds what it is about to spend through this, so the hold is part of the reply's reservation and is settled
   // with the rest whatever the tool does next (spends it, spends less, or fails).
   const turn: ToolTurn = {
@@ -232,12 +232,13 @@ export async function answer(
             images: attachments.length,
             polls: poll ? 1 : 0,
             events: event ? 1 : 0,
-            searches: searches.calls,
+            searchesRun: searches.run,
             fallbackSearches: searches.fallback,
           },
           turn,
         );
-        if (name === "web_search") searches.calls++;
+        // Only a search that asked a provider counts: a rejected query leaves the next one first in line.
+        if (r.search && r.search.primary + r.search.fallback > 0) searches.run++;
         searches.primary += r.search?.primary ?? 0;
         searches.fallback += r.search?.fallback ?? 0;
         content = r.content;

@@ -2,9 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { SETTINGS } from "../src/config.ts";
 import { LinkSet } from "../src/links.ts";
+import { answer } from "../src/llm.ts";
 import { describeSearch } from "../src/search.ts";
 import { SEARCH_PROVIDERS } from "../src/search-providers.ts";
-import { newToolState, type ReplyTally } from "../src/tools.ts";
+import { newToolState, type ReplyTally, runTool } from "../src/tools.ts";
 import { type Call, callTool, fakeFetch, json, testConfig } from "./helpers.ts";
 
 // web_search tries the cheap provider (SEARCH_PROVIDER) first and uses the fallback (SEARCH_FALLBACK) for a reply's
@@ -28,7 +29,7 @@ const tally = (over: Partial<ReplyTally> = {}): ReplyTally => ({
   images: 0,
   polls: 0,
   events: 0,
-  searches: 0,
+  searchesRun: 0,
   fallbackSearches: 0,
   ...over,
 });
@@ -48,7 +49,7 @@ describe("web_search: which provider", () => {
   it("sends a reply's further searches to the fallback, at its price, and lets web_fetch open what it found", async () => {
     const { f, calls } = providers();
     const links = new LinkSet();
-    const r = await search({ fetch: f, links, tally: tally({ searches: 1 }) });
+    const r = await search({ fetch: f, links, tally: tally({ searchesRun: 1 }) });
     expect(calls.map((c) => c.body.provider)).toEqual(["linkup"]);
     expect(r.costUsd).toBe(0.005);
     expect(r.search).toEqual({ primary: 0, fallback: 1 });
@@ -57,7 +58,7 @@ describe("web_search: which provider", () => {
 
   it("charges SEARCH_PROVIDER=linkup at linkup's price, and never falls back to itself", async () => {
     const { f, calls } = providers({ linkup: "empty" });
-    const r = await search({ fetch: f, tally: tally({ searches: 1 }) }, testConfig({ SEARCH_PROVIDER: "linkup" }));
+    const r = await search({ fetch: f, tally: tally({ searchesRun: 1 }) }, testConfig({ SEARCH_PROVIDER: "linkup" }));
     expect(calls.map((c) => c.body.provider)).toEqual(["linkup"]);
     expect(r.costUsd).toBe(0.005);
   });
@@ -93,7 +94,7 @@ describe("web_search: a first search that fails or finds nothing", () => {
 
   it("falls back to the cheap provider when the fallback fails on a further search", async () => {
     const { f, calls } = providers({ linkup: 500 });
-    const r = await search({ fetch: f, tally: tally({ searches: 1 }) });
+    const r = await search({ fetch: f, tally: tally({ searchesRun: 1 }) });
     expect(calls.map((c) => c.body.provider)).toEqual(["linkup", "ceramic"]);
     expect(r.content).toContain("https://ceramic.example/a");
     expect(r.costUsd).toBe(0.00025);
@@ -117,14 +118,14 @@ describe("web_search: when the fallback is not used", () => {
   it("not when SEARCH_FALLBACK is none, or SEARCH_FALLBACK_PER_DAY is 0", async () => {
     for (const config of [testConfig({ SEARCH_FALLBACK: "none" }), testConfig({ SEARCH_FALLBACK_PER_DAY: "0" })]) {
       const { f, calls } = providers({ ceramic: "empty" });
-      await search({ fetch: f, tally: tally({ searches: 1 }) }, config);
+      await search({ fetch: f, tally: tally({ searchesRun: 1 }) }, config);
       expect(calls.map((c) => c.body.provider)).toEqual(["ceramic"]);
     }
   });
 
   it("not more than twice in one reply", async () => {
     const { f, calls } = providers();
-    await search({ fetch: f, tally: tally({ searches: 3, fallbackSearches: 2 }) });
+    await search({ fetch: f, tally: tally({ searchesRun: 3, fallbackSearches: 2 }) });
     expect(calls.map((c) => c.body.provider)).toEqual(["ceramic"]);
   });
 
@@ -132,8 +133,8 @@ describe("web_search: when the fallback is not used", () => {
     const config = testConfig({ SEARCH_FALLBACK_PER_DAY: "1" });
     const state = newToolState(config);
     const { f, calls } = providers();
-    await search({ fetch: f, state, tally: tally({ searches: 1 }) }, config);
-    await search({ fetch: f, state, tally: tally({ searches: 1 }) }, config);
+    await search({ fetch: f, state, tally: tally({ searchesRun: 1 }) }, config);
+    await search({ fetch: f, state, tally: tally({ searchesRun: 1 }) }, config);
     expect(calls.map((c) => c.body.provider)).toEqual(["linkup", "ceramic"]);
   });
 
@@ -170,7 +171,7 @@ describe("web_search: the budget", () => {
 
   it("keeps the cheap search when the budget has room for it but not for the fallback", async () => {
     const { f, calls } = providers();
-    const r = await search({ fetch: f, tally: tally({ searches: 1 }), reserve: (usd) => usd < 0.001 });
+    const r = await search({ fetch: f, tally: tally({ searchesRun: 1 }), reserve: (usd) => usd < 0.001 });
     expect(calls.map((c) => c.body.provider)).toEqual(["ceramic"]);
     expect(r.costUsd).toBe(0.00025);
   });
@@ -210,7 +211,7 @@ describe("what the docs say searches cost", () => {
 describe("the line that announces web search (startup log and doctor)", () => {
   it("names both providers, their prices, the daily cap and the most it can cost", () => {
     expect(describeSearch(cfg)).toBe(
-      "web search: ceramic ($0.00025 a search); a reply's further searches, and a first search that fails or finds nothing, use linkup ($0.005), up to 20 a day (at most $0.10)",
+      "web search: ceramic ($0.00025 a search); a reply's further searches, and a first search that fails or finds nothing, use linkup ($0.005), up to 20 a day (about $0.10; the count restarts with gork, and DAILY_BUDGET_USD always caps spending)",
     );
   });
 
@@ -227,5 +228,99 @@ describe("the line that announces web search (startup log and doctor)", () => {
     )[1];
     expect(main).toMatch(/log\(describeSearch\(cfg\)\)/);
     expect(main.indexOf("describeSearch(cfg)")).toBeLessThan(main.indexOf("client.login"));
+  });
+});
+
+describe("web_search inside a reply: the reply loop and the real tool together", () => {
+  // The seam the bot uses: answer() hands each tool call `turn`, and the tool reserves through it.
+  const reply = async (
+    calls: string[],
+    o: { reserve?: (usd: number) => boolean; config?: ReturnType<typeof testConfig> } = {},
+  ) => {
+    const config = o.config ?? cfg;
+    const net = providers();
+    const toolCalls = calls.map((query, i) => ({
+      id: `c${i}`,
+      type: "function",
+      function: { name: "web_search", arguments: JSON.stringify({ query }) },
+    }));
+    let round = 0;
+    const f = ((url: string, init: RequestInit) => {
+      if (String(url).includes("/ai/websearch")) return net.f(url, init);
+      round++;
+      return Promise.resolve(
+        json({ choices: [{ message: round === 1 ? { content: null, tool_calls: toolCalls } : { content: "ok" } }] }),
+      );
+    }) as typeof fetch;
+    const state = newToolState(config);
+    const r = await answer(config, [{ role: "user", content: "q" }], {
+      fetch: f,
+      reserve: o.reserve ?? (() => true),
+      runTool: (name, args, tally, turn) =>
+        runTool(config, name, args, { state, tally, fetch: f, reserve: turn.reserve, deadline: turn.deadline }),
+    });
+    return { r, providers: net.calls.map((c) => c.body.provider) };
+  };
+
+  it("holds every search in the reply's reservation, at its provider's price", async () => {
+    const holds: number[] = [];
+    const { r, providers: asked } = await reply(["first query", "second query"], {
+      reserve: (usd) => {
+        holds.push(usd);
+        return true;
+      },
+    });
+    expect(asked).toEqual(["ceramic", "linkup"]);
+    expect(holds).toContain(0.00025);
+    expect(holds).toContain(0.005);
+    expect(r.reservedUsd).toBeCloseTo(
+      holds.reduce((a, b) => a + b, 0),
+      10,
+    );
+    expect(r.costUsd).toBeLessThanOrEqual(r.reservedUsd + 1e-12); // equal here, up to floating-point rounding
+  });
+
+  it("runs no search once the daily budget is used up", async () => {
+    // Room for the model's rounds, none for any search.
+    const { providers: asked } = await reply(["first query", "second query"], {
+      reserve: (usd) => usd > 0.006 || usd < 0.0002,
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it("doesn't count a rejected query as a search, so the first real search still goes to the cheap provider", async () => {
+    const { providers: asked } = await reply(["see https://example.com", "a real query"]);
+    expect(asked).toEqual(["ceramic"]);
+  });
+});
+
+describe("web_search: time and today's fallback allowance", () => {
+  it("measures the time left when it decides on a retry, not before the first search", async () => {
+    let now = 1_000_000;
+    const deadline = now + 20_000;
+    const net = fakeFetch((c: Call) => {
+      now += 14_000; // the first search takes 14 s, leaving 6 s: too little for a second
+      return c.body.provider === "ceramic"
+        ? new Response("{}", { status: 502 })
+        : json({ result: { items: [hit("linkup")] } });
+    });
+    await search({ fetch: net.f, tally: tally(), now: () => now, deadline });
+    expect(net.calls.map((c) => c.body.provider)).toEqual(["ceramic"]);
+  });
+
+  it("doesn't hold money for the fallback once today's are used up, so the cheap search still fits a nearly spent budget", async () => {
+    const config = testConfig({ SEARCH_FALLBACK_PER_DAY: "1" });
+    const state = newToolState(config);
+    state.searchFallbacks.take(); // today's one fallback is gone
+    let left = 0.005; // exactly one linkup search, or many ceramic ones
+    const reserve = (usd: number) => {
+      if (usd > left) return false;
+      left -= usd;
+      return true;
+    };
+    const { f, calls } = providers();
+    const r = await search({ fetch: f, state, tally: tally({ searchesRun: 1 }), reserve }, config);
+    expect(calls.map((c) => c.body.provider)).toEqual(["ceramic"]);
+    expect(r.content).not.toMatch(/budget is used up/);
   });
 });

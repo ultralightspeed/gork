@@ -10,7 +10,7 @@ import { Limits } from "../src/limits.ts";
 import { answer, LlmError } from "../src/llm.ts";
 import { type RespondDeps, type RespondRequest, respond } from "../src/respond.ts";
 import { newToolState, runTool, toolDefs } from "../src/tools.ts";
-import { type Call, fakeFetch, json, testConfig } from "./helpers.ts";
+import { type Call, fakeFetch, json, NO_LIMITS, testConfig } from "./helpers.ts";
 
 const FREE = { BILLING_MODE: "free" };
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
@@ -95,7 +95,8 @@ async function fullReply(env: Record<string, string>) {
       answer(cfg, messages, {
         fetch: f,
         reserve: (usd) => deps.budget.tryReserve(usd),
-        runTool: (name, args, tally) => runTool(cfg, name, args, { state, tally, fetch: f, links }),
+        runTool: (name, args, tally, turn) =>
+          runTool(cfg, name, args, { state, tally, fetch: f, links, reserve: turn.reserve, deadline: turn.deadline }),
       }),
   };
   const req: RespondRequest = {
@@ -156,7 +157,12 @@ describe("BILLING_MODE=free never touches the gateway or unified billing", () =>
     expect(toolDefs(testConfig()).map((t) => t.function.name)).toContain("web_search");
 
     const { f, calls } = fakeFetch(() => json({}, 500));
-    const r = await runTool(free, "web_search", { query: "patch notes" }, { state: newToolState(free), fetch: f });
+    const r = await runTool(
+      free,
+      "web_search",
+      { query: "patch notes" },
+      { state: newToolState(free), fetch: f, ...NO_LIMITS },
+    );
     expect(r.content).toMatch(/Unknown tool web_search/);
     expect(calls).toEqual([]);
   });

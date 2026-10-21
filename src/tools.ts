@@ -69,8 +69,8 @@ export type ReplyTally = {
   images: number;
   polls: number;
   events: number;
-  /** web_search calls run so far. */
-  searches: number;
+  /** Web searches this reply has run (a call refused before any provider was asked doesn't count). */
+  searchesRun: number;
   /** Of the searches made so far, how many went to the fallback provider. */
   fallbackSearches: number;
 };
@@ -165,11 +165,12 @@ const allTools = (cfg: Config): Tool[] => [
         };
       }
       const r = await searchWithFallback(cfg, q, {
-        earlier: ctx.tally.searches,
+        earlier: ctx.tally.searchesRun,
         fallbacksEarlier: ctx.tally.fallbackSearches,
-        takeFallback: () => ctx.state.searchFallbacks.take(),
+        allowance: ctx.state.searchFallbacks,
         reserve: ctx.reserve,
-        msLeft: ctx.deadline - ctx.now(),
+        deadline: ctx.deadline,
+        now: ctx.now,
         fetch: ctx.fetch,
         log: ctx.log,
       });
@@ -436,10 +437,9 @@ export async function runTool(
     /** The links this reply may open (see ToolContext); none when not given. */
     links?: LinkSet;
     now?: () => number;
-    /** Budget holds (see ToolTurn); without one, every hold is granted. */
-    reserve?: (usd: number) => boolean;
-    /** The reply's deadline, in ms; none when not given. */
-    deadline?: number;
+    /** Budget holds and the reply's deadline (see ToolTurn): required, so a caller can't drop them by accident. */
+    reserve: (usd: number) => boolean;
+    deadline: number;
   },
 ): Promise<ToolResult> {
   let args: Record<string, unknown>;
@@ -459,7 +459,7 @@ export async function runTool(
     return await tool.run(args, {
       fetch: deps.fetch ?? fetch,
       state: deps.state,
-      tally: deps.tally ?? { images: 0, polls: 0, events: 0, searches: 0, fallbackSearches: 0 },
+      tally: deps.tally ?? { images: 0, polls: 0, events: 0, searchesRun: 0, fallbackSearches: 0 },
       log: deps.log,
       mayPingEveryone: deps.mayPingEveryone ?? false,
       mayCreateEvents: deps.mayCreateEvents ?? false,
@@ -468,8 +468,8 @@ export async function runTool(
       video: deps.video ?? null,
       links: deps.links ?? new LinkSet(),
       now: deps.now ?? Date.now,
-      reserve: deps.reserve ?? (() => true),
-      deadline: deps.deadline ?? Number.POSITIVE_INFINITY,
+      reserve: deps.reserve,
+      deadline: deps.deadline,
     });
   } catch (err) {
     deps.log?.(`tool ${name} failed: ${describeError(err)}`);

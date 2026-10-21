@@ -514,8 +514,8 @@ describe("answer: what a tool may reserve, and what it is told", () => {
     const r = await answer(cfg, msgs, {
       fetch: f,
       runTool: async (_name, _args, tally) => {
-        seen.push([tally.searches, tally.fallbackSearches]);
-        const first = tally.searches === 0;
+        seen.push([tally.searchesRun, tally.fallbackSearches]);
+        const first = tally.searchesRun === 0;
         return { content: "hits", costUsd: 0, search: { primary: first ? 1 : 0, fallback: first ? 0 : 1 } };
       },
       reserve: yes,

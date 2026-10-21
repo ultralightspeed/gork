@@ -920,7 +920,7 @@ describe("respond: images that can't be downloaded", () => {
 });
 
 describe("respond: the reply log line", () => {
-  it("counts the reply's searches on each provider, cheap first, and holds no query or message text", async () => {
+  it("counts the reply's searches on each provider, SEARCH_PROVIDER first, and holds no query or message text", async () => {
     const lines: string[] = [];
     const { req, deps } = setup({
       deps: {

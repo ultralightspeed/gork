@@ -11,7 +11,7 @@ import { loadConfig, readSettings, SETTING_KEYS } from "../src/config.ts";
 import { describeError } from "../src/errors.ts";
 import { answer } from "../src/llm.ts";
 import { newToolState, runTool } from "../src/tools.ts";
-import { shippedPersonas, testConfig } from "./helpers.ts";
+import { NO_LIMITS, shippedPersonas, testConfig } from "./helpers.ts";
 
 // Credential canaries: values shaped like real secrets, fed through every path that turns an error or a setting into
 // text someone sees (a log line, a doctor finding, the setup page). No piece of one may come out the other side. The
@@ -136,7 +136,7 @@ describe("a Cloudflare or model server that echoes the credentials back", () => 
         ["web_fetch", { url: "https://example.org/" }],
         ["generate_image", { prompt: "a cat" }],
       ] as const)
-        out.push((await runTool(cfg(), name, args, deps)).content);
+        out.push((await runTool(cfg(), name, args, { ...deps, ...NO_LIMITS })).content);
     }
     expect(leaks(out)).toEqual([]);
   });

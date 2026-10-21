@@ -63,8 +63,10 @@ export type SearchOutcome = {
  * fallback when the provider answers with a server error or finds nothing. A later search in the reply goes to the
  * fallback: the model searching again is its own sign that the cheap results missed. The fallback is used at most
  * MAX_FALLBACKS_PER_REPLY times a reply and as often as `takeFallback` allows a day; past that, or when the budget
- * or the time left won't cover it, the cheap provider is used. Each search is reserved at its provider's price just
- * before it is sent, and only searches that answered are charged. Log lines name providers and statuses, never the
+ * or the time left won't cover it, the cheap provider is used. A second search in one call starts only if it can finish
+ * before the reply's deadline. Each search is reserved at its provider's price just before it is sent (today's fallback
+ * allowance is checked first, so no money is held for a fallback that can't run), and only searches that answered are
+ * charged. Log lines name providers and statuses, never the
  * query or a provider's error body (which can repeat the query).
  */
 export async function searchWithFallback(
@@ -75,11 +77,12 @@ export async function searchWithFallback(
     earlier: number;
     /** Fallback searches this reply already made. */
     fallbacksEarlier: number;
-    /** Claims one of today's fallback searches; false when they are used up. */
-    takeFallback: () => boolean;
+    /** Today's fallback searches (SEARCH_FALLBACK_PER_DAY). */
+    allowance: { available(): boolean; take(): boolean };
     reserve: (usd: number) => boolean;
-    /** Milliseconds left before the reply's deadline. */
-    msLeft: number;
+    /** When the reply must be answered by, and the clock, in ms. */
+    deadline: number;
+    now: () => number;
     fetch: typeof fetch;
     log?: (line: string) => void;
   },
@@ -105,19 +108,28 @@ export async function searchWithFallback(
       return { error: err instanceof Error && err.name === "TimeoutError" ? "timed out" : "failed", retry: false };
     }
   };
-  /** Whether the fallback may be used now; claims today's slot and reserves its price when it may. */
+  /** Whether 
+eedMs is left before the deadline, measured now. */
+  const timeFor = (needMs: number) => o.deadline - o.now() >= needMs;
+  /** Whether the fallback may be used now; reserves its price and claims today's slot when it may. */
   const mayFallBack = (needMs: number): boolean =>
     fallback !== null &&
     !fallbackTried &&
     o.fallbacksEarlier + used.fallback < MAX_FALLBACKS_PER_REPLY &&
-    o.msLeft >= needMs &&
+    timeFor(needMs) &&
+    o.allowance.available() &&
     o.reserve(searchPrice(fallback)) &&
-    o.takeFallback();
+    o.allowance.take();
 
   if (o.earlier > 0 && mayFallBack(0)) {
     fallbackTried = true;
     const r = await ask(fallback as SearchProvider);
     if ("hits" in r) return { hits: r.hits, costUsd, used };
+    // The cheap provider is now a second search in this call, so it too must be able to finish in time.
+    if (!timeFor(SEARCH_TIMEOUT_MS)) {
+      o.log?.(`web_search: ${fallback} ${r.error}`);
+      return { hits: null, refused: "failed", costUsd, used };
+    }
     o.log?.(`web_search: ${fallback} ${r.error}; searched ${primary} instead`);
   }
 
@@ -173,5 +185,5 @@ export function describeSearch(cfg: Config): string {
   const fb = cfg.tools.searchFallback;
   if (!fb) return `${head}, no fallback`;
   const max = (cfg.tools.searchFallbackPerDay * searchPrice(fb)).toFixed(2);
-  return `${head}; a reply's further searches, and a first search that fails or finds nothing, use ${fb} ($${searchPrice(fb)}), up to ${cfg.tools.searchFallbackPerDay} a day (at most $${max})`;
+  return `${head}; a reply's further searches, and a first search that fails or finds nothing, use ${fb} ($${searchPrice(fb)}), up to ${cfg.tools.searchFallbackPerDay} a day (about $${max}; the count restarts with gork, and DAILY_BUDGET_USD always caps spending)`;
 }

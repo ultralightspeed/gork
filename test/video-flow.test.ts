@@ -109,8 +109,15 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
         fetch: cf.f,
         reserve: (usd) => deps.budget.tryReserve(usd),
         videoTool: !!watch,
-        runTool: (name, args, tally) =>
-          runTool(cfg, name, args, { state, tally, fetch: cf.f, video: watch ?? undefined }),
+        runTool: (name, args, tally, turn) =>
+          runTool(cfg, name, args, {
+            state,
+            tally,
+            fetch: cf.f,
+            video: watch ?? undefined,
+            reserve: turn.reserve,
+            deadline: turn.deadline,
+          }),
       }),
   };
   const req: RespondRequest = {

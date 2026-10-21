@@ -288,7 +288,7 @@ describe("doctor: web search settings", () => {
   it("says which providers web search uses and the most the fallback can cost a day", async () => {
     const r = await run().go();
     expect(r.out).toMatch(
-      /ok +web search: ceramic \(\$0\.00025 a search\); .* use linkup \(\$0\.005\), up to 20 a day \(at most \$0\.10\)/,
+      /ok +web search: ceramic \(\$0\.00025 a search\); .* use linkup \(\$0\.005\), up to 20 a day \(about \$0\.10; the count restarts with gork/,
     );
   });
 

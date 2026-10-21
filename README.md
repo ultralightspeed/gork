@@ -123,11 +123,11 @@ Rough prices (they change, so check Cloudflare's pricing pages):
 |---|---|
 | A normal reply (default model) | about $0.001 to $0.002 |
 | A reply's first web search (Ceramic) | $0.00025 ($0.25 per 1,000 searches) |
-| Each further search in a reply, or a retry when the first fails or finds nothing (Linkup) | $0.005, at most 2 a reply and 20 a day ($0.10) |
+| Each further search in a reply, or a retry when the first fails or finds nothing (Linkup) | $0.005, at most 2 a reply and 20 a day (about $0.10) |
 | Page reads, YouTube transcripts, polls, events | nothing extra |
 | Safety check, generated images, video speech-to-text | see below; on Workers Paid about $0.0005 for the speech in a full 60-second clip |
 
-Web search tries [Ceramic](https://ceramic.ai/) first because it is cheap, but its index is weak on new things, such as a game that came out last month. So a reply's further searches, and a first search that fails or finds nothing, go to [Linkup](https://www.linkup.so/), which costs 20 times as much. The model searching again is the sign that the first results missed. Set `SEARCH_FALLBACK=none` to use only Ceramic, or `SEARCH_PROVIDER=linkup` to use Linkup for every search. Neither keeps a copy of your search queries; Exa, the third choice, does. When gork starts, its log says which providers it uses and the most the fallback can cost a day.
+Web search tries [Ceramic](https://ceramic.ai/) first because it is cheap, but its index is weak on new things, such as a game that came out last month. So a reply's further searches, and a first search that fails or finds nothing, go to [Linkup](https://www.linkup.so/), which costs 20 times as much. The model searching again is the sign that the first results missed. Set `SEARCH_FALLBACK=none` to use only Ceramic, or `SEARCH_PROVIDER=linkup` to use Linkup for every search. Neither keeps a copy of your search queries; Exa, the third choice, does. The daily count restarts when gork does, and the daily budget always caps what gork spends. When gork starts, its log says which providers it uses and what the fallback can cost a day.
 
 The safety check, image generation and video speech-to-text call Workers AI directly, in both modes. They never use your credits, and the gateway's spend limit does not cover them. On the Workers Free plan they use the free daily allowance and cost nothing. On Workers Paid, Cloudflare bills what goes past that allowance.
 

@@ -123,10 +123,12 @@ async function main(): Promise<void> {
       return answer(cfg, messages, {
         reserve: (usd) => budget.tryReserve(usd),
         videoTool: !!video,
-        runTool: (name, args, tally) =>
+        runTool: (name, args, tally, turn) =>
           runTool(cfg, name, args, {
             state: toolState,
             tally,
+            reserve: turn.reserve,
+            deadline: turn.deadline,
             log,
             mayPingEveryone,
             mayCreateEvents,
