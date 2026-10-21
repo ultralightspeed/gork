@@ -1,6 +1,6 @@
 {
   "name": "gork",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A Discord bot that answers @mentions with a model on Cloudflare Workers AI, with a safety screen and a daily spend cap.",
   "license": "0BSD",
   "private": true,
