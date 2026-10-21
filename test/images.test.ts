@@ -3,11 +3,51 @@ import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import { downloadImages, imageDataUrl, pickImageUrls, sniffImageMime } from "../src/images.ts";
 
+describe("pickImageUrls: the size asked of the media proxy", () => {
+  // The proxy crops to fill the width and height it is given (a 1400x150 screenshot asked for at 1024x1024 came
+  // back as its middle 150x150), so the size asked for must keep the image's proportions.
+  const size = (width: number, height: number) => {
+    const [url] = pickImageUrls(
+      [{ url: "https://cdn.discordapp.com/attachments/1/2/s.png", contentType: "image/png", width, height }],
+      1,
+    );
+    const u = new URL(url);
+    return [Number(u.searchParams.get("width")), Number(u.searchParams.get("height"))];
+  };
+
+  it("keeps a wide screenshot whole, at its own size", () => {
+    expect(size(1400, 150)).toEqual([1400, 150]);
+  });
+
+  it("keeps a tall phone screenshot whole, shrunk in proportion to about a megapixel", () => {
+    const [w, h] = size(1170, 2532);
+    expect(w * h).toBeLessThanOrEqual(1024 * 1024);
+    expect(w * h).toBeGreaterThan(0.98 * 1024 * 1024);
+    expect(Math.abs(w / h - 1170 / 2532)).toBeLessThan(0.005);
+  });
+
+  it("shrinks a large photo to 1024x1024 at most, and never asks for more than 2048 on a side", () => {
+    expect(size(4000, 4000)).toEqual([1024, 1024]);
+    const [w, h] = size(8000, 200);
+    expect(w).toBe(2048);
+    expect(h).toBe(51);
+  });
+
+  it("never enlarges a small image", () => {
+    expect(size(300, 200)).toEqual([300, 200]);
+  });
+});
+
 describe("pickImageUrls", () => {
   it("keeps only Discord-hosted still images, shrunk through the media proxy, capped at max", () => {
     const urls = pickImageUrls(
       [
-        { url: "https://cdn.discordapp.com/attachments/1/2/a.png?ex=1", contentType: "image/png" },
+        {
+          url: "https://cdn.discordapp.com/attachments/1/2/a.png?ex=1",
+          contentType: "image/png",
+          width: 3000,
+          height: 3000,
+        },
         { url: "https://media.discordapp.net/attachments/1/2/b.jpg", contentType: "image/jpeg" },
         { url: "https://evil.example/c.png", contentType: "image/png" },
         { url: "https://cdn.discordapp.com/attachments/1/2/d.pdf", contentType: "application/pdf" },
@@ -19,8 +59,9 @@ describe("pickImageUrls", () => {
     // The evil host and the PDF are skipped, and the cap stops it before f.png.
     expect(urls).toEqual([
       "https://media.discordapp.net/attachments/1/2/a.png?ex=1&width=1024&height=1024",
-      "https://media.discordapp.net/attachments/1/2/b.jpg?width=1024&height=1024",
-      "https://media.discordapp.net/attachments/1/2/e.webp?width=1024&height=1024",
+      // No size known: no size asked for, since the proxy crops to whatever box it is given.
+      "https://media.discordapp.net/attachments/1/2/b.jpg",
+      "https://media.discordapp.net/attachments/1/2/e.webp",
     ]);
     // Plain http is refused even on a Discord host.
     expect(

@@ -104,6 +104,19 @@ describe("resolveNames", () => {
   });
 });
 
+describe("imageSources: sizes", () => {
+  it("passes on each image's width and height, which the media proxy needs to shrink it without cropping", () => {
+    const m = msg({
+      attachments: new Map([["1", { url: "https://cdn/a.png", contentType: "image/png", width: 1400, height: 150 }]]),
+      embeds: [{ fields: [], image: { proxyURL: "https://proxy/img", width: 640, height: 360 }, thumbnail: null }],
+    });
+    expect(imageSources(m)).toEqual([
+      { url: "https://cdn/a.png", contentType: "image/png", width: 1400, height: 150 },
+      { url: "https://proxy/img", width: 640, height: 360 },
+    ]);
+  });
+});
+
 describe("imageSources", () => {
   const embedWith = (image?: string, thumbnail?: string) => ({
     fields: [],

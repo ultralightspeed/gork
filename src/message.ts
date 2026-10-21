@@ -12,13 +12,14 @@ type AttachmentLike = {
   width?: number | null;
   height?: number | null;
 };
+type EmbedImageLike = { proxyURL?: string; width?: number | null; height?: number | null };
 type EmbedLike = {
   title?: string | null;
   url?: string | null;
   description?: string | null;
   fields: { name: string; value: string }[];
-  image?: { proxyURL?: string } | null;
-  thumbnail?: { proxyURL?: string } | null;
+  image?: EmbedImageLike | null;
+  thumbnail?: EmbedImageLike | null;
 };
 type MessageLike = {
   content: string;
@@ -89,11 +90,20 @@ export function toMsg(
 /** Attachments and embed image/thumbnail proxy URLs, from the message and its forwarded snapshots. */
 export function imageSources(m: Forwardable): ImageSource[] {
   return withForwards(m).flatMap((p) => {
-    const fromAttachments = [...p.attachments.values()].map((a) => ({ url: a.url, contentType: a.contentType }));
+    // Sizes go along: the media proxy needs them to shrink an image without cropping it (images.ts, fitSize).
+    const size = (w?: number | null, h?: number | null) => ({
+      ...(w != null && { width: w }),
+      ...(h != null && { height: h }),
+    });
+    const fromAttachments = [...p.attachments.values()].map((a) => ({
+      url: a.url,
+      contentType: a.contentType,
+      ...size(a.width, a.height),
+    }));
     const fromEmbeds = p.embeds
-      .flatMap((e) => [e.image?.proxyURL, e.thumbnail?.proxyURL])
-      .filter((u): u is string => !!u)
-      .map((url) => ({ url }));
+      .flatMap((e) => [e.image, e.thumbnail])
+      .filter((i): i is EmbedImageLike & { proxyURL: string } => !!i?.proxyURL)
+      .map((i) => ({ url: i.proxyURL, ...size(i.width, i.height) }));
     return [...fromAttachments, ...fromEmbeds];
   });
 }

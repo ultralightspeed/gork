@@ -7,11 +7,27 @@ const IMAGE_PATH = /\.(png|jpe?g|webp)$/i;
 const GIF_PATH = /\.gif$/i;
 const MAX_BYTES = 4 * 1024 * 1024;
 
-export type ImageSource = { url: string; contentType?: string | null };
+export type ImageSource = { url: string; contentType?: string | null; width?: number | null; height?: number | null };
+
+/** Most pixels, and most pixels on a side, asked of the media proxy: about what a 1024px square costs the model. */
+const MAX_PIXELS = 1024 * 1024;
+const MAX_SIDE = 2048;
 
 /**
- * Discord-hosted images, at most `max`. Stills are shrunk to <=1024px by the media proxy; GIFs are requested as a
- * PNG of their first frame (`format=png`). If the proxy doesn't convert one, downloadImages drops it.
+ * The size to ask Discord's media proxy for. The proxy crops to fill the width and height it is given (a 1400x150
+ * screenshot asked for at 1024x1024 comes back as its middle 150x150), so the size keeps the image's proportions:
+ * the whole image, never enlarged, at most MAX_PIXELS and MAX_SIDE. Null when the size isn't known.
+ */
+export function fitSize(width?: number | null, height?: number | null): { width: number; height: number } | null {
+  if (!width || !height || width <= 0 || height <= 0) return null;
+  const scale = Math.min(1, Math.sqrt(MAX_PIXELS / (width * height)), MAX_SIDE / Math.max(width, height));
+  return { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+}
+
+/**
+ * Discord-hosted images, at most `max`. Stills are shrunk by the media proxy to fitSize (whole, in proportion); one
+ * whose size isn't known is asked for as it is, since a guessed box would crop it. GIFs are requested as a PNG of their
+ * first frame (`format=png`). If the proxy doesn't convert one, downloadImages drops it.
  */
 export function pickImageUrls(sources: ImageSource[], max: number): string[] {
   const out: string[] = [];
@@ -32,8 +48,11 @@ export function pickImageUrls(sources: ImageSource[], max: number): string[] {
     if (gif) u.searchParams.set("format", "png");
     if (!external) {
       u.hostname = "media.discordapp.net";
-      u.searchParams.set("width", "1024");
-      u.searchParams.set("height", "1024");
+      const size = fitSize(s.width, s.height);
+      if (size) {
+        u.searchParams.set("width", String(size.width));
+        u.searchParams.set("height", String(size.height));
+      }
     }
     out.push(u.href);
   }
