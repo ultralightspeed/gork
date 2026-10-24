@@ -229,7 +229,10 @@ describe("Dependabot", () => {
 
   it("waits a few days after a release before proposing it, longer for a major one, for every ecosystem", () => {
     expect(ecosystems.map((e) => /package-ecosystem: (\S+)/.exec(e)?.[1])).toEqual(["npm", "github-actions", "docker"]);
-    for (const e of ecosystems) expect(e).toMatch(/ {4}cooldown:\n {6}default-days: 3\n {6}semver-major-days: 7\n/);
+    for (const e of ecosystems) expect(e).toMatch(/ {4}cooldown:\n {6}default-days: 3\n/);
+    // Dependabot accepts semver-major-days only for ecosystems with semantic versions: npm here, not Actions or Docker.
+    expect(ecosystems[0]).toMatch(/ {6}semver-major-days: 7\n/);
+    for (const e of ecosystems.slice(1)) expect(e).not.toMatch(/semver-(major|minor|patch)-days/);
   });
 });
 
