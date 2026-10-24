@@ -14,6 +14,13 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # The type definitions follow the Node version gork runs on (24, as .nvmrc and package.json's engines say).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Published without its platform binaries (they start again at 2.6.2), so npm can't install it.
+      - dependency-name: "@biomejs/biome"
+        versions: ["2.6.1"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

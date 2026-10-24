@@ -1,9 +1,10 @@
 name: CI
 
 on:
-  # Branches only: a release tag points at a commit main already checked, and image.yml runs its own checks.
+  # Pushes to main only: a pull request is checked by its pull_request run (a push to its branch would check it twice),
+  # and a release tag points at a commit main already checked, which image.yml checks again.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

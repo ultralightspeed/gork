@@ -121,9 +121,9 @@ describe("the helpers above", () => {
 });
 
 describe("CI and the image check", () => {
-  it("run on branch pushes only, so a release tag doesn't repeat the checks its commit already passed", () => {
+  it("run on pushes to main only: a pull request is checked by its pull_request run, and a release tag by image.yml", () => {
     for (const name of ["ci.yml", "image-check.yml"])
-      expect(read(name), name).toMatch(/^ {2}push:\n {4}branches: \["\*\*"\]\n/m);
+      expect(read(name), name).toMatch(/^ {2}push:\n {4}branches: \[main\]\n/m);
   });
 });
 
@@ -233,6 +233,16 @@ describe("Dependabot", () => {
     // Dependabot accepts semver-major-days only for ecosystems with semantic versions: npm here, not Actions or Docker.
     expect(ecosystems[0]).toMatch(/ {6}semver-major-days: 7\n/);
     for (const e of ecosystems.slice(1)) expect(e).not.toMatch(/semver-(major|minor|patch)-days/);
+  });
+
+  it("keeps @types/node on the runtime's major version (Node 24, as .nvmrc says), like the base image", () => {
+    expect(ecosystems[0]).toMatch(
+      / {6}- dependency-name: "@types\/node"\n {8}update-types: \["version-update:semver-major"\]\n/,
+    );
+  });
+
+  it("skips Biome 2.6.1, whose platform binaries were never published, so npm can't install it", () => {
+    expect(ecosystems[0]).toMatch(/ {6}- dependency-name: "@biomejs\/biome"\n {8}versions: \["2\.6\.1"\](\n|$)/);
   });
 });
 
