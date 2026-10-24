@@ -1,13 +1,16 @@
-# Weekly version updates, with minor and patch bumps grouped into one pull request per ecosystem.
+# Weekly version updates, with minor and patch bumps grouped into one pull request per ecosystem. Each waits a few days
+# after a release (a week for a major one), so a bad or hijacked version is usually pulled before it is proposed;
+# security updates don't wait. Minor and patch updates of npm packages and Actions merge themselves once CI passes
+# (dependabot-auto-merge.yml); the rest wait for a person.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    # Wait a week after a release, so a bad or hijacked version is usually caught before it is proposed.
     cooldown:
-      default-days: 7
+      default-days: 3
+      semver-major-days: 7
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -15,6 +18,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     groups:
       actions-minor-patch:
         update-types: [minor, patch]
@@ -22,6 +28,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     # The base image stays on Node 24, the version .nvmrc and package.json's engines name.
     ignore:
       - dependency-name: node

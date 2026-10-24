@@ -33,6 +33,8 @@ concurrency:
 jobs:
   image:
     name: image builds (linux/${{ matrix.arch }}, nothing pushed)
+    # Never in the private history repository, where Actions minutes cost money.
+    if: ${{ !github.event.repository.private }}
     strategy:
       matrix:
         # Arm runners are free only for public repositories, so arm64 is built once the repository is public.

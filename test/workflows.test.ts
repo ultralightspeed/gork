@@ -198,3 +198,63 @@ describe("the release image", () => {
     expect(attest).toMatch(/subject-digest: \$\{\{ steps\.create\.outputs\.digest \}\}/);
   });
 });
+
+describe("the paid private copy", () => {
+  // The private history repository runs the same workflow files; Actions minutes are free only on the public one.
+  it.each(["ci.yml", "secret-scan.yml", "image-check.yml", "dependabot-auto-merge.yml"])(
+    "%s runs none of its jobs in a private repository",
+    (name) => {
+      const text = read(name);
+      const jobs = count(text, /^ {2}[\w-]+:\n {4}name:/gm);
+      expect(jobs).toBeGreaterThan(0);
+      expect(count(text, /^ {4}if: \$\{\{ !github\.event\.repository\.private( && .*)? \}\}$/gm)).toBe(jobs);
+    },
+  );
+});
+
+describe("installing dependencies in CI", () => {
+  it.each(["ci.yml", "image.yml"])(
+    "%s installs without running packages' install scripts, then checks registry signatures",
+    (name) => {
+      const text = read(name);
+      expect(text).not.toMatch(/npm ci(?! --ignore-scripts)/);
+      expect(text).toMatch(/- run: npm ci --ignore-scripts --no-fund --no-audit\n {6}- run: npm audit signatures\n/);
+    },
+  );
+});
+
+describe("Dependabot", () => {
+  const config = readFileSync(join(import.meta.dirname, "..", ".github", "dependabot.yml"), "utf8");
+  const ecosystems = config.split(/\n(?= {2}- package-ecosystem:)/).slice(1);
+
+  it("waits a few days after a release before proposing it, longer for a major one, for every ecosystem", () => {
+    expect(ecosystems.map((e) => /package-ecosystem: (\S+)/.exec(e)?.[1])).toEqual(["npm", "github-actions", "docker"]);
+    for (const e of ecosystems) expect(e).toMatch(/ {4}cooldown:\n {6}default-days: 3\n {6}semver-major-days: 7\n/);
+  });
+});
+
+describe("Dependabot auto-merge", () => {
+  const text = read("dependabot-auto-merge.yml");
+
+  it("acts only on pull requests Dependabot opened", () => {
+    expect(text).toMatch(/^on:\n {2}pull_request:\n(?! )/m);
+    expect(text).toContain("github.event.pull_request.user.login == 'dependabot[bot]'");
+  });
+
+  it("asks GitHub to merge only after the required checks pass, never merging directly", () => {
+    const scripts = runScripts(text).join("\n");
+    expect(scripts).toMatch(/gh pr merge --auto --squash "\$PR_URL"/);
+    expect(scripts).not.toMatch(/gh pr merge(?! --auto)/);
+  });
+
+  it("leaves major updates, base-image updates and a change of maintainers for a person", () => {
+    const merge = steps(text).find((s) => s.includes("gh pr merge")) ?? "";
+    const gate = /^ {8}if: (.+)$/m.exec(merge)?.[1] ?? "";
+    expect(gate).toContain("steps.meta.outputs.update-type != 'version-update:semver-major'");
+    expect(gate).toContain("steps.meta.outputs.maintainer-changes != 'true'");
+    expect(gate).toMatch(
+      /package-ecosystem == 'npm_and_yarn' \|\| steps\.meta\.outputs\.package-ecosystem == 'github_actions'/,
+    );
+    expect(gate).not.toContain("docker");
+  });
+});

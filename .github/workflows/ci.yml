@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+# Every job checks `!github.event.repository.private`: the private history repository runs these same files, and
+# Actions minutes are free only on the public one.
+
 # A newer push cancels the run in progress. The secret scan is in secret-scan.yml, outside this group, so a cancelled
 # run here never leaves a commit unscanned.
 concurrency:
@@ -19,6 +22,7 @@ concurrency:
 jobs:
   check:
     name: check (typecheck, biome, vitest)
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -29,11 +33,14 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci --no-fund --no-audit
+      # No install scripts (the usual way a malicious package runs code), then every package's registry signature.
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm audit signatures
       - run: npm run check
 
   cli-without-install:
     name: the CLI runs without npm install
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

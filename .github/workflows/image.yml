@@ -35,7 +35,8 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: test "v$(node -p "require('./package.json').version")" = "$TAG"
-      - run: npm ci --no-fund --no-audit
+      - run: npm ci --ignore-scripts --no-fund --no-audit
+      - run: npm audit signatures
       - run: npm run check
 
   # One native build per architecture (no QEMU: the ffmpeg stage compiles C, which is far too slow emulated). Each leg

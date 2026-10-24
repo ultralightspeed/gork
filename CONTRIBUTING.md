@@ -116,6 +116,8 @@ Safety replies (self-harm and "safety check is down") are fixed in code. A perso
 
 ## Dependencies
 
+Dependabot proposes updates weekly, each only after a cooldown (3 days, 7 for a major version). Minor and patch updates of npm packages and GitHub Actions merge themselves once CI and the secret scan pass; major updates, base-image updates and updates whose package changed maintainers need a review. CI installs with `--ignore-scripts` and runs `npm audit signatures`, so a new dependency that needs an install script, or whose signature doesn't check out, fails CI.
+
 Dependabot doesn't see the FFmpeg, OpenSSL, LAME and dav1d `ARG` lines in the `Dockerfile`, so bump those versions and their SHA-256 values by hand.
 
 ## Docs

@@ -1,0 +1,30 @@
+name: Dependabot auto-merge
+
+# Turns on auto-merge for Dependabot's minor and patch updates of npm packages and GitHub Actions. GitHub then merges
+# only once the checks the main branch's ruleset requires (CI and the secret scan) have passed. Major updates,
+# base-image updates and any update whose package changed maintainers (a common sign of a hijacked package) wait for a
+# person. Dependabot proposes a version only after its cooldown (.github/dependabot.yml), and malware alerts are on.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    name: auto-merge a minor or patch dependency update
+    if: ${{ !github.event.repository.private && github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: turn on auto-merge
+        if: ${{ steps.meta.outputs.update-type != 'version-update:semver-major' && steps.meta.outputs.maintainer-changes != 'true' && (steps.meta.outputs.package-ecosystem == 'npm_and_yarn' || steps.meta.outputs.package-ecosystem == 'github_actions') }}
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
