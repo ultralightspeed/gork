@@ -241,8 +241,10 @@ describe("Dependabot", () => {
     );
   });
 
-  it("skips Biome 2.6.1, whose platform binaries were never published, so npm can't install it", () => {
-    expect(ecosystems[0]).toMatch(/ {6}- dependency-name: "@biomejs\/biome"\n {8}versions: \["2\.6\.1"\](\n|$)/);
+  it("skips Biome 2.6.0 and 2.6.1, whose platform binaries were never published, so npm can't install them", () => {
+    expect(ecosystems[0]).toMatch(
+      / {6}- dependency-name: "@biomejs\/biome"\n {8}versions: \[">= 2\.6\.0, < 2\.6\.2"\](\n|$)/,
+    );
   });
 });
 
