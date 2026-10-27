@@ -13,15 +13,11 @@ on:
       - .dockerignore
       - package.json
       - package-lock.json
+      - src/distrust.ts
       - .github/workflows/image-check.yml
+  # Every pull request, with no paths filter: the main ruleset requires the gate job below, and a required check that
+  # never reports would block the pull request. The changes job decides whether the build itself runs.
   pull_request:
-    paths:
-      - Dockerfile
-      - docker/**
-      - .dockerignore
-      - package.json
-      - package-lock.json
-      - .github/workflows/image-check.yml
   workflow_dispatch:
 
 permissions:
@@ -32,10 +28,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: does the pull request change the image
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      image: ${{ steps.files.outputs.image }}
+    steps:
+      - id: files
+        env:
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A push or a manual run always builds: the push trigger's paths already chose it.
+          if [ "$EVENT" != pull_request ]; then echo "image=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # Read into a variable first, so a failed request fails the job instead of looking like no changes.
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          image=false
+          # The same list as the push trigger's paths.
+          while IFS= read -r f; do
+            case "$f" in
+              Dockerfile|docker/*|.dockerignore|package.json|package-lock.json|src/distrust.ts|.github/workflows/image-check.yml) image=true ;;
+            esac
+          done <<< "$files"
+          echo "image=$image" | tee -a "$GITHUB_OUTPUT"
+
   image:
     name: image builds (linux/${{ matrix.arch }}, nothing pushed)
+    needs: changes
     # Never in the private history repository, where Actions minutes cost money.
-    if: ${{ !github.event.repository.private }}
+    if: ${{ !github.event.repository.private && needs.changes.outputs.image == 'true' }}
     strategy:
       matrix:
         # Arm runners are free only for public repositories, so arm64 is built once the repository is public.
@@ -76,3 +104,21 @@ jobs:
           echo "image size: $size bytes"
           # A budget, not a target (the image is about 200 MB): a jump past it should be a decision, not an accident.
           test "$size" -lt 250000000
+
+  # The one check the main ruleset requires: it reports on every pull request, and passes when both builds passed or
+  # were skipped because nothing that goes into the image changed.
+  gate:
+    name: image check
+    needs: [changes, image]
+    if: ${{ !github.event.repository.private && always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: the image built, or nothing that goes into it changed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          IMAGE: ${{ needs.image.result }}
+        run: |
+          echo "change detection: $CHANGES, image builds: $IMAGE"
+          test "$CHANGES" = success
+          test "$IMAGE" = success || test "$IMAGE" = skipped

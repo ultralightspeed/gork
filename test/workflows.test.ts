@@ -127,6 +127,42 @@ describe("CI and the image check", () => {
   });
 });
 
+describe("the image check", () => {
+  const check = read("image-check.yml");
+  const job = (id: string) => check.slice(check.indexOf(`\n  ${id}:\n`) + 1).split(/\n(?= {2}[\w-]+:\n)/)[0];
+  const pushPaths = [
+    ...(/^ {2}push:\n {4}branches: \[main\]\n {4}paths:\n((?: {6}- .*\n)+)/m.exec(check)?.[1] ?? "").matchAll(
+      /- (\S+)/g,
+    ),
+  ].map((m) => m[1]);
+
+  it("runs on every pull request, so the main ruleset can require its gate job", () => {
+    // A required check that never reports blocks the pull request forever, so the trigger takes no paths filter.
+    expect(check).toMatch(/^ {2}pull_request:\n(?! {4})/m);
+    expect(job("gate")).toMatch(/^ {4}name: image check$/m);
+  });
+
+  it("builds only when a pull request changes something that goes into the image, the same list as the push trigger", () => {
+    expect(pushPaths).toEqual(
+      expect.arrayContaining(["Dockerfile", "docker/**", "package-lock.json", "src/distrust.ts"]),
+    );
+    const detect = runScripts(job("changes")).join("\n");
+    const patterns = /case "\$f" in\n\s+(\S+)\) image=true/.exec(detect)?.[1].split("|") ?? [];
+    expect(patterns.map((p) => p.replace(/\/\*$/, "/**"))).toEqual(pushPaths);
+    expect(job("image")).toMatch(/^ {4}needs: changes$/m);
+    expect(job("image")).toMatch(/^ {4}if: .*needs\.changes\.outputs\.image == 'true'/m);
+  });
+
+  it("passes the gate only when the build passed, or was skipped because nothing it uses changed", () => {
+    const gate = job("gate");
+    expect(gate).toMatch(/^ {4}needs: \[changes, image\]$/m);
+    expect(gate).toMatch(/^ {4}if: .*\balways\(\)/m);
+    const script = runScripts(gate).join("\n");
+    expect(script).toContain('test "$CHANGES" = success');
+    expect(script).toContain('test "$IMAGE" = success || test "$IMAGE" = skipped');
+  });
+});
+
 describe("the secret scan", () => {
   const scan = read("secret-scan.yml");
 
@@ -262,14 +298,13 @@ describe("Dependabot auto-merge", () => {
     expect(scripts).not.toMatch(/gh pr merge(?! --auto)/);
   });
 
-  it("leaves major updates, base-image updates and a change of maintainers for a person", () => {
+  it("leaves major updates, base-image updates past a patch and a change of maintainers for a person", () => {
     const merge = steps(text).find((s) => s.includes("gh pr merge")) ?? "";
     const gate = /^ {8}if: (.+)$/m.exec(merge)?.[1] ?? "";
     expect(gate).toContain("steps.meta.outputs.update-type != 'version-update:semver-major'");
     expect(gate).toContain("steps.meta.outputs.maintainer-changes != 'true'");
     expect(gate).toMatch(
-      /package-ecosystem == 'npm_and_yarn' \|\| steps\.meta\.outputs\.package-ecosystem == 'github_actions'/,
+      /package-ecosystem == 'npm_and_yarn' \|\| steps\.meta\.outputs\.package-ecosystem == 'github_actions' \|\| \(steps\.meta\.outputs\.package-ecosystem == 'docker' && steps\.meta\.outputs\.update-type == 'version-update:semver-patch'\)/,
     );
-    expect(gate).not.toContain("docker");
   });
 });
