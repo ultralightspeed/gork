@@ -45,11 +45,8 @@ export function eventRefusal(message: Message): string | null {
 export type EventAccess = {
   askerId: string;
   botId: string;
-  /**
-   * Whether the asker, gork or every member (the @everyone role) has a permission in a channel (its overrides
-   * count), or on the server for null.
-   */
-  has: (who: "asker" | "bot" | "everyone", permission: Permission, channelId: string | null) => boolean;
+  /** Whether the asker or gork has a permission in a channel (its overrides count), or on the server for null. */
+  has: (who: "asker" | "bot", permission: Permission, channelId: string | null) => boolean;
   /** The server's voice and Stage channels. */
   voiceChannels: () => VoiceChannelRef[];
 };
@@ -64,9 +61,9 @@ export function eventAccess(message: Message): EventAccess | null {
     askerId: asker.id,
     botId: me.id,
     has: (who, permission, channelId) => {
-      const holder = who === "asker" ? asker : who === "bot" ? me : guild.roles.everyone;
-      if (channelId === null) return holder.permissions.has(permission);
-      return !!guild.channels.cache.get(channelId)?.permissionsFor(holder)?.has(permission);
+      const m = who === "asker" ? asker : me;
+      if (channelId === null) return m.permissions.has(permission);
+      return !!guild.channels.cache.get(channelId)?.permissionsFor(m)?.has(permission);
     },
     voiceChannels: () =>
       [...guild.channels.cache.values()].flatMap((ch) =>

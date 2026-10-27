@@ -74,7 +74,6 @@ const onServer: ServerEvent = {
   madeBy: "gork",
   repeats: false,
   link: "https://discord.com/events/1/100",
-  everyoneSees: true,
   cantChange: null,
 };
 const rename: EventChange = { kind: "edit", event: onServer, edit: { name: "Raid night 2" } };

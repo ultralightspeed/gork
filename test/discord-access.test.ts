@@ -111,28 +111,23 @@ describe("eventChangeWhyNot", () => {
 describe("eventAccess", () => {
   const asker = { id: "u1", permissions: { has: (p: string) => p === "ManageEvents" } };
   const me = { id: "b1", permissions: { has: (p: string) => p === "CreateEvents" } };
-  const everyone = { permissions: { has: (p: string) => p === "ViewChannel" } };
-  /** A channel where the asker may only connect, gork may only view, and every member may view if `open`. */
-  const channel = (id: string, name: string, type: ChannelType, open: boolean) => ({
+  /** A channel where the asker may only connect and gork may only view. */
+  const channel = (id: string, name: string, type: ChannelType) => ({
     id,
     name,
     type,
     isVoiceBased: () => type === ChannelType.GuildVoice || type === ChannelType.GuildStageVoice,
-    permissionsFor: (m: unknown) => ({
-      has: (p: string) =>
-        m === everyone ? open && p === "ViewChannel" : p === (m === asker ? "Connect" : "ViewChannel"),
-    }),
+    permissionsFor: (m: unknown) => ({ has: (p: string) => p === (m === asker ? "Connect" : "ViewChannel") }),
   });
   const message = {
     member: asker,
     guild: {
       members: { me },
-      roles: { everyone },
       channels: {
         cache: new Map([
-          ["10", channel("10", "Raid Voice", ChannelType.GuildVoice, true)],
-          ["11", channel("11", "Town Hall", ChannelType.GuildStageVoice, false)],
-          ["12", channel("12", "general", ChannelType.GuildText, true)],
+          ["10", channel("10", "Raid Voice", ChannelType.GuildVoice)],
+          ["11", channel("11", "Town Hall", ChannelType.GuildStageVoice)],
+          ["12", channel("12", "general", ChannelType.GuildText)],
         ]),
       },
     },
@@ -147,13 +142,6 @@ describe("eventAccess", () => {
     expect(access?.has("asker", "ManageEvents", "10")).toBe(false);
     expect(access?.has("bot", "ViewChannel", "10")).toBe(true);
     expect(access?.has("bot", "ViewChannel", "99")).toBe(false);
-  });
-
-  it("reads what every member may do, from the @everyone role", () => {
-    const access = eventAccess(message);
-    expect(access?.has("everyone", "ViewChannel", null)).toBe(true);
-    expect(access?.has("everyone", "ViewChannel", "10")).toBe(true);
-    expect(access?.has("everyone", "ViewChannel", "11")).toBe(false);
   });
 
   it("lists the voice and Stage channels, and nothing else", () => {

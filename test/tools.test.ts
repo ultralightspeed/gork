@@ -834,7 +834,6 @@ describe("event tools: list_events, edit_event and delete_event", () => {
     madeBy: "gork",
     repeats: false,
     link: "https://discord.com/events/1/100",
-    everyoneSees: true,
     cantChange: null,
   };
   const movie: ServerEvent = { ...raid, id: "101", name: "Movie night", start: new Date("2026-10-30T20:00:00Z") };
@@ -867,15 +866,16 @@ describe("event tools: list_events, edit_event and delete_event", () => {
     expect((await run("list_events", { name: "karaoke" })).content).toMatch(/No event .* has "karaoke" in its name/);
   });
 
-  it("list nothing about an event in a channel not every member can see, though it can still be changed", async () => {
-    const staff: ServerEvent = { ...raid, id: "102", name: "Staff meeting", everyoneSees: false };
-    const withStaff = board([raid, staff]);
-    const listed = await run("list_events", {}, { events: withStaff });
-    expect(listed.content).toBe((await run("list_events", {}, { events: board([raid]) })).content);
-    const found = await run("list_events", { name: "staff" }, { events: withStaff });
-    expect(found.content).toBe((await run("list_events", { name: "staff" }, { events: board([raid]) })).content);
-    const renamed = await run("edit_event", { event: "102", name: "Staff sync" }, { events: withStaff });
-    expect(renamed.change).toMatchObject({ kind: "edit", event: { id: "102" } });
+  it("list every event the asker can see, as their own Events list does, voice channels included", async () => {
+    const staff: ServerEvent = {
+      ...raid,
+      id: "102",
+      name: "Staff meeting",
+      where: { kind: "voice", channel: "Staff Voice" },
+    };
+    const listed = await run("list_events", {}, { events: board([raid, staff]) });
+    expect(listed.content).toContain('"Staff meeting" (id 102)');
+    expect(listed.content).toContain("in the voice channel Staff Voice");
   });
 
   it("say so when Discord doesn't give the events, or when there is no server", async () => {
@@ -922,12 +922,11 @@ describe("event tools: list_events, edit_event and delete_event", () => {
     }
   });
 
-  it("edit_event won't move an event out of a channel not every member can see", async () => {
-    const staff: ServerEvent = { ...raid, where: { kind: "voice", channel: "Staff Voice" }, everyoneSees: false };
+  it("edit_event moves an event out of a voice channel too, to a location or another voice channel", async () => {
+    const staff: ServerEvent = { ...raid, where: { kind: "voice", channel: "Staff Voice" } };
     for (const args of [{ location: "Orgrimmar" }, { voice_channel: "Raid Voice" }]) {
       const r = await run("edit_event", { event: "100", ...args }, { events: board([staff]) });
-      expect(r.change, JSON.stringify(args)).toBeUndefined();
-      expect(r.content).toMatch(/not every member can see/);
+      expect(r.change, JSON.stringify(args)).toMatchObject({ kind: "edit", event: { id: "100" } });
     }
   });
 

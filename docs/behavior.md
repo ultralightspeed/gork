@@ -77,15 +77,14 @@ gork does to an event only what the person asking could do themselves, and what 
 
 If either of you lacks a permission, gork says which and does nothing. It is told this before it answers, so it does not claim to have done it. `npm run doctor` warns when gork lacks Create Events.
 
-### Which events gork lists
+### Which events gork sees
 
-gork's reply can be read by everyone in the channel, so it lists only events every member of the server can see: every event at a location, and those in voice and Stage channels that the @everyone role can view (and that you and gork can see). It never lists events in other channels, nor says whether there are any. You can still have one changed or deleted by giving its link. In a server where @everyone can't see the voice channels, only events at a location are listed.
+gork sees the events the person asking can see, as in their own Events list: every event at a location, and those in voice and Stage channels you can see (gork has to be able to see the channel too). Its reply is posted in the channel, so it can mention an event from a voice channel that not everyone there can see; ask about those somewhere private.
 
 ### Voice and Stage channels
 
 - To hold a new event in a voice channel, the person asking and gork each need View Channel, Connect and Create Events in that channel. Channel permission overrides count.
 - To change or delete an event in a voice channel, each of you needs View Channel and Connect there, along with the permissions above. To move an event into a voice channel, each of you needs all of those in the new channel.
-- gork never moves an event out of a channel that not every member can see, so a change never shows an event to more people. Move those in Discord.
 - A Stage channel needs more, because Discord asks for it: View Channel, Manage Channels, Mute Members and Move Members, and Create Events for a new event. gork's invite does not include the Stage permissions, so unless you grant them to gork yourself, an event for a Stage channel is created with the channel's name as its location, and gork can't change, delete or move an event into a Stage channel.
 
 ### Where and when

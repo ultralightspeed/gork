@@ -210,16 +210,12 @@ async function eventToChange(
 }
 
 /**
- * Where an edit may move the event: refused out of a channel not every member can see (that could show the event to
- * more people), and into a voice channel only when both may change the event there. Gives the edit with the channel's
- * own name, or what the model is told instead; the refusal is the same whether such a channel exists or not.
+ * Where an edit may move the event: into a voice channel only when both the asker and gork may change the event there.
+ * Gives the edit with the channel's own name, or what the model is told instead; the refusal is the same whether such
+ * a channel exists or not.
  */
 function placeEdit(ev: ServerEvent, edit: EventEdit, events: ServerEvents): EventEdit | string {
-  if (!edit.where) return edit;
-  if (!ev.everyoneSees) {
-    return "It's in a voice channel not every member can see, and moving it could show it to more people, so you can't move it; the person asking can move it in Discord.";
-  }
-  if (edit.where.kind === "location") return edit;
+  if (edit.where?.kind !== "voice") return edit;
   const target = pickVoiceChannel(edit.where.channel, events.channelsFor(ev));
   if (!target) {
     return `There's no voice channel called "${oneLine(edit.where.channel)}" that you and the person asking could both move this event to.`;
@@ -466,7 +462,7 @@ const allTools = (cfg: Config): Tool[] => [
   {
     def: fn(
       "list_events",
-      `See the scheduled events on this Discord server that every member can see, soonest first, with each one's id and link and whether you may change or delete it. Use it when someone asks about events, and before you change or delete one or create one that may already exist. Shows the soonest ${MAX_LISTED_EVENTS}; give name to find one by part of its name. This, not web_fetch, is how you read a discord.com/events link.`,
+      `See the scheduled events on this Discord server that the person asking can see, soonest first, with each one's id and link and whether you may change or delete it. Use it when someone asks about events, and before you change or delete one or create one that may already exist. Shows the soonest ${MAX_LISTED_EVENTS}; give name to find one by part of its name. This, not web_fetch, is how you read a discord.com/events link.`,
       { name: { type: "string", description: "Part of an event's name. Optional." } },
       [],
     ),

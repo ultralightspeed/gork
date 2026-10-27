@@ -168,7 +168,6 @@ const raid: ServerEvent = {
   madeBy: "gork",
   repeats: false,
   link: "https://discord.com/events/1/100",
-  everyoneSees: true,
   cantChange: null,
 };
 const editing = (event: ServerEvent = raid, zone = utc) => ({ ...zone, event });
@@ -360,24 +359,12 @@ describe("formatEventList", () => {
     expect(list([])).toMatch(/no events coming up/i);
   });
 
-  it("lists only events every member can see, with one fixed note, so nothing hints at the others", () => {
-    const hidden: ServerEvent = { ...raid, id: "200", name: "Staff meeting", everyoneSees: false };
-    const shown = list([raid, hidden]);
-    expect(shown).not.toContain("Staff meeting");
-    expect(shown).not.toContain("200");
-    expect(shown).toMatch(/not every member can see are never listed/);
-    // The same text with or without the hidden event: no count, no other trace.
-    expect(shown).toBe(list([raid]));
-    expect(list([hidden])).toBe(list([]));
-    expect(list([hidden], { name: "staff" })).toBe(list([], { name: "staff" }));
-  });
-
   it("finds events by part of their name, and says when none matches", () => {
     const movie: ServerEvent = { ...raid, id: "101", name: "Movie night" };
     const found = list([raid, movie], { name: "MOVIE" });
     expect(found).toContain('"Movie night" (id 101)');
     expect(found).not.toContain("Raid night");
-    expect(list([raid], { name: "karaoke" })).toMatch(/No event that can be listed here has "karaoke" in its name/);
+    expect(list([raid], { name: "karaoke" })).toMatch(/No event the person asking can see has "karaoke" in its name/);
   });
 
   it("keeps each event to its own lines, so a name or description can't pose as another entry", () => {

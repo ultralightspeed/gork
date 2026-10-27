@@ -117,7 +117,7 @@ export function readEvent(ev: DiscordEvent, access: EventAccess, guildId: string
   const live = ev.status === GuildScheduledEventStatus.Active;
   if ((!live && ev.status !== GuildScheduledEventStatus.Scheduled) || ev.scheduledStartTimestamp === null) return null;
   const channel = ev.channelId === null ? null : access.voiceChannels().find((c) => c.id === ev.channelId);
-  const sees = (who: "asker" | "bot" | "everyone") => access.has(who, "ViewChannel", ev.channelId);
+  const sees = (who: "asker" | "bot") => access.has(who, "ViewChannel", ev.channelId);
   if (ev.channelId !== null && (!channel || !sees("asker") || !sees("bot"))) return null;
   const madeBy = ev.creatorId === access.botId ? "gork" : ev.creatorId === access.askerId ? "asker" : "other";
   const block = (who: "asker" | "bot") => changeBlock(access, who, madeBy, ev.channelId === null ? null : channel);
@@ -135,7 +135,6 @@ export function readEvent(ev: DiscordEvent, access: EventAccess, guildId: string
     madeBy,
     repeats: ev.recurrenceRule !== null,
     link: eventLink(guildId, ev.id),
-    everyoneSees: !channel || sees("everyone"),
     cantChange: eventChangeWhyNot(block("asker"), block("bot"), { madeBy, stage: !!channel?.stage }),
   };
 }
@@ -228,7 +227,6 @@ function changeProblem(ev: ServerEvent, change: EventChange): string | null {
   const { start, end, where } = change.edit;
   if (ev.live) return "the event started before it could be changed";
   if (ev.repeats && (start || end || where)) return "only a repeating event's name and description are changed";
-  if (where && !ev.everyoneSees) return "an event in a channel not every member can see isn't moved";
   return null;
 }
 

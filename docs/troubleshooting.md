@@ -67,10 +67,10 @@ After fixing it, run `npm run up`.
 - gork changes or deletes an event only when the person asking and gork could both do it themselves: Manage Events, or Create Events for an event of your own. Discord counts an event gork made as gork's, so changing one of those needs Manage Events, even for the person who asked for it. gork says which of you is missing what.
 - gork's invite doesn't ask for Manage Events, so it can change only the events it made. To let it change other people's events, give its role Manage Events (Server Settings, Roles).
 - gork can't change an event that is under way (it can still delete it). For a repeating event it changes only the name and description, and it doesn't delete one. Do the rest in Discord.
-- gork moves an event only into a voice channel both of you may change it in, and never out of a channel that not every member can see.
+- gork moves an event only into a voice channel both of you may change it in.
 - gork can't change, delete or move an event into a Stage channel unless its role has Manage Channels, Mute Members and Move Members there.
-- If gork doesn't list an event, it may be in a voice channel that not every member can see: gork never lists those, since anyone in the channel can read its reply. Give it the event's link instead.
-- If gork says it can't see an event at all, it isn't one the person asking can see: it is over or canceled, or in a voice channel they or gork can't see.
+- To change or delete an event in a voice channel, gork needs View Channel and Connect in that channel. Its invite doesn't ask for Connect, so it has it only through its role or the @everyone role there.
+- If gork doesn't see an event, it isn't one the person asking can see: it is over or canceled, or in a voice channel they or gork can't see. Give gork's role View Channel there.
 - If gork posts that it tried and Discord said no, look for `event change` in the logs. It says why: Discord's reason, or that the event or the permissions changed before gork got to it.
 
 ## YouTube transcripts stop working

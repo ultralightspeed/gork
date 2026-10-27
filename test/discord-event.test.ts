@@ -113,8 +113,8 @@ describe("createGuildEvent", () => {
 
 /**
  * The asker (u1) and gork (b1). By default the asker has no event permissions and gork has Create Events, and both can
- * see and connect to channel 10 (a voice channel every member sees), 11 (a Stage channel) and 12 (a voice channel only
- * some members see). `hidden` hides channels from one of them; `channel` replaces what one of them has in a channel.
+ * see and connect to channels 10 and 12 (voice channels) and 11 (a Stage channel). `hidden` hides channels from one
+ * of them; `channel` replaces what one of them has in a channel.
  */
 function access(
   o: {
@@ -128,7 +128,6 @@ function access(
     askerId: "u1",
     botId: "b1",
     has: (who, p, channelId) => {
-      if (who === "everyone") return channelId !== "12" && p === "ViewChannel";
       const own = channelId === null ? undefined : o.channel?.[channelId]?.[who];
       if (own) return own.includes(p);
       if (channelId !== null && (p === "ViewChannel" || p === "Connect")) return o.hidden !== who;
@@ -171,7 +170,6 @@ const raid: ServerEvent = {
   madeBy: "gork",
   repeats: false,
   link: "https://discord.com/events/1/100",
-  everyoneSees: true,
   cantChange: null,
 };
 
@@ -204,13 +202,6 @@ describe("readEvent", () => {
     const madeBy = (creatorId: string | null) => readEvent(discordEvent({ creatorId }), moderator, "1")?.madeBy;
     expect([madeBy("b1"), madeBy("u1"), madeBy("u2"), madeBy(null)]).toEqual(["gork", "asker", "other", "other"]);
     expect(readEvent(discordEvent({ recurrenceRule: {} }), moderator, "1")?.repeats).toBe(true);
-  });
-
-  it("says whether every member can see it: one at a location, or in a channel the @everyone role can view", () => {
-    const inChannel = (channelId: string) => discordEvent({ channelId, entityMetadata: null });
-    expect(readEvent(discordEvent(), moderator, "1")?.everyoneSees).toBe(true);
-    expect(readEvent(inChannel("10"), moderator, "1")?.everyoneSees).toBe(true);
-    expect(readEvent(inChannel("12"), moderator, "1")?.everyoneSees).toBe(false);
   });
 
   it("says why it can't be changed, checking the asker and then gork", () => {
@@ -396,7 +387,7 @@ describe("changeGuildEvent", () => {
     expect((await change(live, moderator, remove)).calls.deleted).toEqual(["100"]);
   });
 
-  it("moves an event only to a channel both may still change it in, and never out of a channel some can't see", async () => {
+  it("moves an event only to a voice channel both may still change it in", async () => {
     const toRaidVoice: EventChange = {
       kind: "edit",
       event: raid,
@@ -408,14 +399,6 @@ describe("changeGuildEvent", () => {
     // The asker lost Connect in Raid Voice since the reply: the channels are worked out again.
     const lost = access({ asker: ["ManageEvents"], channel: { "10": { asker: ["ViewChannel", "ManageEvents"] } } });
     expect((await change(discordEvent(), lost, toRaidVoice)).ok).toBe(false);
-    // An event in Staff Voice, which not every member can see, stays there.
-    const staffOnly = discordEvent({ channelId: "12", entityMetadata: null });
-    const out = await change(staffOnly, moderator, {
-      ...toRaidVoice,
-      edit: { where: { kind: "location", text: "x" } },
-    });
-    expect(out.ok).toBe(false);
-    expect(out.calls.edited).toEqual([]);
   });
 
   it("never throws: Discord's refusal is logged and returns false", async () => {
