@@ -33,7 +33,7 @@ WORKDIR /src
 # OpenSSL: the TLS backend (certificate and host name checks). Static libraries; the openssl tool is kept only so
 # check-ffmpeg.sh can play a TLS server.
 RUN set -eu; \
-    curl -fsSL --retry 3 -o openssl.tar.gz "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"; \
+    curl -fsSL --retry 3 --retry-all-errors -o openssl.tar.gz "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz"; \
     echo "$OPENSSL_SHA256  openssl.tar.gz" | sha256sum -c -; \
     tar -xzf openssl.tar.gz; cd "openssl-$OPENSSL_VERSION"; \
     ./Configure --prefix=/opt/deps --libdir=lib no-shared no-tests no-docs no-module no-legacy no-engine no-comp \
@@ -42,7 +42,7 @@ RUN set -eu; \
     rm -rf /src/*
 
 RUN set -eu; \
-    curl -fsSL --retry 3 -o lame.tar.gz "https://downloads.sourceforge.net/project/lame/lame/$LAME_VERSION/lame-$LAME_VERSION.tar.gz"; \
+    curl -fsSL --retry 3 --retry-all-errors -o lame.tar.gz "https://downloads.sourceforge.net/project/lame/lame/$LAME_VERSION/lame-$LAME_VERSION.tar.gz"; \
     echo "$LAME_SHA256  lame.tar.gz" | sha256sum -c -; \
     tar -xzf lame.tar.gz; cd "lame-$LAME_VERSION"; \
     ./configure --prefix=/opt/deps --enable-static --disable-shared --disable-frontend --disable-decoder --disable-gtktest; \
@@ -50,7 +50,7 @@ RUN set -eu; \
     rm -rf /src/*
 
 RUN set -eu; \
-    curl -fsSL --retry 3 -o dav1d.tar.xz "https://download.videolan.org/pub/videolan/dav1d/$DAV1D_VERSION/dav1d-$DAV1D_VERSION.tar.xz"; \
+    curl -fsSL --retry 3 --retry-all-errors -o dav1d.tar.xz "https://download.videolan.org/pub/videolan/dav1d/$DAV1D_VERSION/dav1d-$DAV1D_VERSION.tar.xz"; \
     echo "$DAV1D_SHA256  dav1d.tar.xz" | sha256sum -c -; \
     tar -xJf dav1d.tar.xz; cd "dav1d-$DAV1D_VERSION"; \
     meson setup build --prefix=/opt/deps --libdir=lib --buildtype=release --default-library=static \
@@ -63,7 +63,7 @@ RUN set -eu; \
 # pipelines end in; and the few filters they use. No network protocol but https, no file protocol, no hwaccels, no
 # devices, no zlib/bzip2/lzma (a compressed mov header or Matroska track is declined, not parsed).
 RUN set -eu; \
-    curl -fsSL --retry 3 -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"; \
+    curl -fsSL --retry 3 --retry-all-errors -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"; \
     echo "$FFMPEG_SHA256  ffmpeg.tar.xz" | sha256sum -c -; \
     tar -xJf ffmpeg.tar.xz; cd "ffmpeg-$FFMPEG_VERSION"; \
     PKG_CONFIG_PATH=/opt/deps/lib/pkgconfig ./configure \

@@ -47,6 +47,13 @@ describe("the image's supply chain", () => {
     expect(verified.length).toBe(downloads.length);
   });
 
+  it("retries a download on any error, a reset connection included (the checksum still guards what arrives)", () => {
+    // Plain --retry skips connection resets, and one mirror hiccup failed a whole image build.
+    const downloads = flat.match(/\bcurl -[^;]*/g) ?? [];
+    expect(downloads.length).toBeGreaterThanOrEqual(4);
+    for (const d of downloads) expect(d).toMatch(/--retry \d+ --retry-all-errors\b/);
+  });
+
   it("builds an LGPL ffmpeg: no GPL or nonfree switches", () => {
     expect(flat).not.toMatch(/--enable-(gpl|nonfree)/);
   });

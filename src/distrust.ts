@@ -3,8 +3,9 @@
 //
 // October 2026: the private keys of eight eMudhra intermediate CAs were compromised
 // (https://emudhra.we-have-a-problem.com/). They chain to these roots, directly or through cross-signs. Discord,
-// Cloudflare and YouTube use none of them. Only node: imports here: the Dockerfile runs this file to filter the
-// certificate bundle ffmpeg reads.
+// Cloudflare and YouTube use none of them. Node 24.22.1 and Alpine's later CA bundle ship without all four, so in the
+// image this is a backstop; the host scripts still need it, since they run on whatever Node the user has installed.
+// Only node: imports here: the Dockerfile runs this file to filter the certificate bundle ffmpeg reads.
 import { X509Certificate } from "node:crypto";
 import tls from "node:tls";
 
