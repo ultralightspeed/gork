@@ -184,7 +184,7 @@ const imageNumbers = (history: Msg[]): number[][] => {
 };
 
 /** The images in `history`, with the numbers buildMessages shows them by and who posted each, as its lines name them. */
-export function earlierImages(history: Msg[], botName: string): EarlierImage[] {
+export function historyImages(history: Msg[], botName: string): EarlierImage[] {
   const numbers = imageNumbers(history);
   return history.flatMap((h, i) => h.images.map((url, j) => ({ number: numbers[i][j], url, poster: who(h, botName) })));
 }
@@ -286,8 +286,8 @@ export const MAX_IMAGES_PER_REQUEST = 8;
 const frameImage = (url: string): ContentPart => ({ type: "image_url", image_url: { url }, frame: true });
 
 /**
- * `messages` with at most `max` images, for sending. Images that aren't video frames (the asker's own and the
- * replied-to message's) are kept; then the newest frames. An older frame becomes "(no longer attached)" after its
+ * `messages` with at most `max` images, for sending. Images that aren't video frames (the asker's own, the replied-to
+ * message's, and earlier ones view_images showed) are kept; then the newest frames. An older frame becomes "(no longer attached)" after its
  * label, so the model knows it saw that moment. The messages passed in are not changed.
  */
 export function fitImages(messages: ChatMessage[], max = MAX_IMAGES_PER_REQUEST): ChatMessage[] {

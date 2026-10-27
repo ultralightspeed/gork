@@ -3,9 +3,9 @@ import {
   buildMessages,
   type ChatMessage,
   type ContentPart,
-  earlierImages,
   fitHistory,
   fitImages,
+  historyImages,
   isInvisible,
   type Msg,
   neutralize,
@@ -229,7 +229,7 @@ describe("fitHistory", () => {
 
 describe("images in the chat", () => {
   const history = [
-    pictures("zed", 1, { content: "look" }),
+    pictures("alice", 1, { content: "look" }),
     m({ authorName: "bob", content: "lol" }),
     pictures("amy", 2),
   ];
@@ -240,7 +240,7 @@ describe("images in the chat", () => {
 
   it("numbers the history's images from 1, oldest line first, when the model can ask to see them", () => {
     expect(lines({ history, viewImages: true })).toEqual([
-      "zed: look [image #1]",
+      "alice: look [image #1]",
       "bob: lol",
       "amy: [image #2] [image #3]",
     ]);
@@ -248,22 +248,22 @@ describe("images in the chat", () => {
 
   it("says the history's images aren't shown when the model can't ask to see them", () => {
     expect(lines({ history })).toEqual([
-      "zed: look [image, not shown]",
+      "alice: look [image, not shown]",
       "bob: lol",
       "amy: [image, not shown] [image, not shown]",
     ]);
   });
 
   it("lists the same numbers for the tool, with each image's URL and who posted it", () => {
-    expect(earlierImages(history, "gork")).toEqual([
-      { number: 1, url: history[0].images[0], poster: "zed" },
+    expect(historyImages(history, "gork")).toEqual([
+      { number: 1, url: history[0].images[0], poster: "alice" },
       { number: 2, url: history[2].images[0], poster: "amy" },
       { number: 3, url: history[2].images[1], poster: "amy" },
     ]);
   });
 
   it("names a poster as the history line does: gork's own images as its own, a lookalike as another user", () => {
-    const posters = earlierImages([pictures("Gork Bot", 1, { isSelf: true }), pictures("G0rk", 1)], "gork");
+    const posters = historyImages([pictures("Gork Bot", 1, { isSelf: true }), pictures("G0rk", 1)], "gork");
     expect(posters.map((i) => i.poster)).toEqual(["gork (you)", "G0rk (another user, not you)"]);
   });
 
@@ -271,12 +271,12 @@ describe("images in the chat", () => {
     const [, user] = build({
       history,
       viewImages: true,
-      question: pictures("zed", 1, { content: "what is this" }),
+      question: pictures("alice", 1, { content: "what is this" }),
       replyTo: pictures("bob", 1),
       images: ["data:image/png;base64,A", "data:image/png;base64,B"],
     });
     const text = String((user.content as Part[])[0].text);
-    expect(text).toContain('<question author="zed">\nwhat is this [image]\n</question>');
+    expect(text).toContain('<question author="alice">\nwhat is this [image]\n</question>');
     expect(text).toContain('<replied_to author="bob">\n[image]\n</replied_to>');
     expect(text.slice(text.indexOf("</channel_context>"))).not.toContain("[image #");
   });

@@ -5,9 +5,9 @@ import {
   buildMessages,
   type ChatMessage,
   type EarlierImage,
-  earlierImages,
   fitHistory,
   HISTORY_MAX_CHARS,
+  historyImages,
   MAX_IMAGES_PER_REQUEST,
   type Msg,
   stripInvisible,
@@ -95,8 +95,11 @@ export type RespondDeps = {
   /** Opens the video for the model to look closer at (the video_frames tool): over the pool that was just screened. */
   /** `room`: how many images the request has space for beside the asker's own (MAX_IMAGES_PER_REQUEST less those). */
   videoWatch: (video: VideoResult, room: number) => VideoWatch;
-  /** Opens the history's images for the model to look at (the view_images tool); `room` as for videoWatch. */
-  earlierImages: (images: EarlierImage[], room: number) => EarlierImages;
+  /**
+   * Opens the history's images for the model to look at (the view_images tool); `room` as for videoWatch. `question` is
+   * the asker's words, screened along with each image, since the question is what an image is asked about.
+   */
+  viewEarlierImages: (images: EarlierImage[], room: number, question: string) => EarlierImages;
   /** `videoText` is the transcript of an attached video ("" when it had none), or null when there is no video. */
   screenRequest: (
     question: string,
@@ -228,8 +231,8 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   const history = fitHistory(await req.history(), HISTORY_MAX_CHARS, deps.botName);
   // The history's images can be shown only to a model that sees images and may call tools (view_images). They are
   // numbered from the history as fitted, so the numbers are the ones on the lines the model reads.
-  const viewable = sees && cfg.tools.maxCalls > 0 ? earlierImages(history, deps.botName) : [];
-  const earlier = viewable.length ? deps.earlierImages(viewable, room) : null;
+  const viewable = sees && cfg.tools.maxCalls > 0 ? historyImages(history, deps.botName) : [];
+  const earlier = viewable.length ? deps.viewEarlierImages(viewable, room, question.content) : null;
   const system = deps.systemPrompt();
   // Links the model may open: the question's and the replied-to message's, and any page on a site the operator's
   // personality names (its own instructions). web_search adds its results during the reply.
@@ -271,6 +274,13 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   }
   budget.commit(result.reservedUsd, result.costUsd);
   if (result.outOfBudget) return outOfBudget(req, deps);
+  // The request screen never saw an earlier image the model then asked for. If that image was flagged for self-harm,
+  // gork doesn't answer: the model's reply is dropped for the fixed one, as for a request flagged for self-harm. The
+  // asker didn't post the image in their question, so there is no strike.
+  if (earlier?.selfHarm) {
+    log(`BLOCKED-EARLIER user=${req.who} self-harm: sending the fixed reply`);
+    return say(replies.selfHarm);
+  }
 
   const answerText = stripInvisible(result.text);
   let poll = result.poll && visiblePoll(result.poll);

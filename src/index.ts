@@ -117,12 +117,12 @@ async function main(): Promise<void> {
         },
         room,
       ),
-    earlierImages: (images, room) =>
+    viewEarlierImages: (images, room, question) =>
       new EarlierImages(
         images,
         {
           download: async (url) => (await downloadImages([url]))[0] ?? null,
-          screen: (shown) => screenEarlierImages(cfg, shown),
+          screen: (shown) => screenEarlierImages(cfg, question, shown),
           log,
         },
         room,

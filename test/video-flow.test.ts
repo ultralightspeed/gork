@@ -108,7 +108,7 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
         },
         room,
       ),
-    earlierImages: () => {
+    viewEarlierImages: () => {
       throw new Error("this chat has no history, so no earlier images");
     },
     screenRequest: (q, r, media) => screenRequest(cfg, q, r, { ...media, fetchFn: cf.f }),

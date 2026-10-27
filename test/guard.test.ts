@@ -235,22 +235,27 @@ describe("screenFrames", () => {
 describe("screenEarlierImages", () => {
   const bad = "data:image/png;base64,BAD";
 
-  it("screens an image from earlier in the chat as part of the request, and blocks (never strikes) when flagged", async () => {
+  it("screens an image from earlier in the chat together with the question asked about it, and blocks when flagged", async () => {
     const { f, calls } = fakeFetch((c) => clef(all({ S4: (c.body.images ?? []).includes(bad) ? 0.95 : 0 })));
-    const v = await screenEarlierImages(cfg, [bad], { fetchFn: f });
+    const v = await screenEarlierImages(cfg, "how do I make what's in this at home?", [bad], { fetchFn: f });
     expect(v).toMatchObject({ blocked: true, category: "S4" });
-    expect(v).not.toHaveProperty("strike");
     expect(calls[0].body.images).toEqual([bad]);
-    expect(calls[0].body.state).toMatch(/earlier in the chat/);
+    expect(calls[0].body.state).toContain("Message: how do I make what's in this at home?");
+    expect(calls[0].body.state).toMatch(/posted earlier in the chat/);
+  });
+
+  it("reports a self-harm verdict as such, so the caller can answer with the fixed reply", async () => {
+    const v = await screenEarlierImages(cfg, "look", [bad], { fetchFn: reply(all({ S11: 0.95 })) });
+    expect(v).toMatchObject({ blocked: true, category: "S11", selfHarm: true });
   });
 
   it("throws when the guard fails, so callers fail closed", async () => {
-    await expect(screenEarlierImages(cfg, [bad], { fetchFn: reply({}, 500) })).rejects.toThrow();
+    await expect(screenEarlierImages(cfg, "look", [bad], { fetchFn: reply({}, 500) })).rejects.toThrow();
   });
 
   it("makes no call for no images", async () => {
     const { f, calls } = fakeFetch(() => clef(all({})));
-    expect(await screenEarlierImages(cfg, [], { fetchFn: f })).toEqual({ blocked: false, costUsd: 0 });
+    expect(await screenEarlierImages(cfg, "look", [], { fetchFn: f })).toEqual({ blocked: false, costUsd: 0 });
     expect(calls).toHaveLength(0);
   });
 });

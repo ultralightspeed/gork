@@ -656,7 +656,7 @@ describe("view_images tool", () => {
   const names = (offer: { video?: boolean; earlierImages?: boolean } = {}) =>
     toolDefs(cfg, offer).map((t) => t.function.name);
   const earlier = () =>
-    new EarlierImages([{ number: 1, url: "https://media.discordapp.net/attachments/1/2/a.png", poster: "zed" }], {
+    new EarlierImages([{ number: 1, url: "https://media.discordapp.net/attachments/1/2/a.png", poster: "bob" }], {
       download: async () => "data:image/png;base64,AAA",
       screen: async () => ({ blocked: false, costUsd: 0.00004 }),
     });
@@ -672,7 +672,7 @@ describe("view_images tool", () => {
 
   it("returns the image asked for, labelled with its number and poster, and charges its screening", async () => {
     const r = await callTool(cfg, "view_images", JSON.stringify({ numbers: [1] }), { earlierImages: earlier() });
-    expect(r.images).toEqual([{ label: "Image #1, posted by zed", dataUrl: "data:image/png;base64,AAA" }]);
+    expect(r.images).toEqual([{ label: "Image #1, posted by bob", dataUrl: "data:image/png;base64,AAA" }]);
     expect(r.costUsd).toBe(0.00004);
   });
 

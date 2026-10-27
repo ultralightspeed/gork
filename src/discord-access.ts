@@ -1,4 +1,4 @@
-// Reads from a Discord message what the asker and gork may do, who may be tagged, and which images to look at.
+// Reads from a Discord message what the asker and gork may do and who may be tagged, and picks the images to attach.
 import type { GuildMember, Message } from "discord.js";
 import type { Msg } from "./context.ts";
 import { buildPingContext, type MentionKind, type PingContext } from "./mentions.ts";

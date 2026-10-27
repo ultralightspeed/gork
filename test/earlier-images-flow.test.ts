@@ -20,6 +20,8 @@ import { type Call, fakeFetch, json, testConfig } from "./helpers.ts";
 const IMAGE_URL = "https://media.discordapp.net/attachments/1/2/screenshot.png";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 7]);
 const IMAGE_DATA = `data:image/png;base64,${PNG.toString("base64")}`;
+const ANSWER = "A screenshot of the raid frames: everyone is dead but the hunter.";
+const CANT_SEE = "I can't see that one.";
 
 const replies: Replies = {
   blocked: "BLOCKED",
@@ -57,18 +59,19 @@ const viewCall = (numbers: number[]) => ({
 });
 type Part = { type: string; text?: string; image_url?: { url: string } };
 
-async function reply(o: { modelAsks?: boolean; flagImage?: boolean; config?: Record<string, string> } = {}) {
+async function reply(o: { modelAsks?: boolean; flag?: "S4" | "S11"; config?: Record<string, string> } = {}) {
   const cfg = testConfig(o.config ?? {});
   const chat = [
     () => (o.modelAsks === false ? completion({ content: "Canberra." }) : completion(viewCall([1]))),
-    () => completion({ content: "A screenshot of the raid frames: everyone is dead but the hunter." }),
+    // A model that was refused the image says so; it never describes an image it wasn't shown.
+    () => completion({ content: o.flag ? CANT_SEE : ANSWER }),
   ];
   const cf = fakeFetch((c: Call) => {
     if (c.url.endsWith("/chat/completions")) return (chat.shift() ?? (() => completion({ content: "done" })))();
     if (c.url.includes("clef-flash")) {
-      const flagged = o.flagImage && (c.body.images ?? []).includes(IMAGE_DATA);
+      const flagged = o.flag && (c.body.images ?? []).includes(IMAGE_DATA);
       const answers = Object.fromEntries(
-        ["S1", "S3", "S4", "S9", "S11"].map((k) => [k, { type: "noul", noul: flagged && k === "S4" ? 0.95 : 0 }]),
+        ["S1", "S3", "S4", "S9", "S11"].map((k) => [k, { type: "noul", noul: flagged && k === o.flag ? 0.95 : 0 }]),
       );
       return json({ success: true, result: { answers } });
     }
@@ -91,12 +94,12 @@ async function reply(o: { modelAsks?: boolean; flagImage?: boolean; config?: Rec
     videoWatch: () => {
       throw new Error("no video here");
     },
-    earlierImages: (images, room) =>
+    viewEarlierImages: (images, room, question) =>
       new EarlierImages(
         images,
         {
           download: async (url) => (await downloadImages([url], cf.f))[0] ?? null,
-          screen: (shown) => screenEarlierImages(cfg, shown, { fetchFn: cf.f }),
+          screen: (shown) => screenEarlierImages(cfg, question, shown, { fetchFn: cf.f }),
         },
         room,
       ),
@@ -122,38 +125,44 @@ async function reply(o: { modelAsks?: boolean; flagImage?: boolean; config?: Rec
   };
   const req: RespondRequest = {
     userId: "u1",
-    who: "zed(u1)",
+    who: "amy(u1)",
     where: "Test Server",
     channelId: "c1",
-    question: msg("zed", "what is this?"),
+    question: msg("amy", "what is this?"),
     replyTo: null,
     imageUrls: [],
     can: { send: true, attach: true, poll: true },
     mayPingEveryone: false,
     mayCreateEvents: false,
     mayCreatePolls: false,
-    history: async () => [msg("wicket", "anyone up for MC tonight"), msg("zed", "", [IMAGE_URL])],
+    history: async () => [msg("bob", "anyone up for a raid tonight"), msg("amy", "", [IMAGE_URL])],
   };
   const outcome = await respond(req, deps);
   const modelCalls = cf.calls.filter((c) => c.url.endsWith("/chat/completions"));
   const guardCalls = cf.calls.filter((c) => c.url.includes("clef-flash"));
   const downloads = cf.calls.filter((c) => c.url === IMAGE_URL);
-  return { outcome, modelCalls, guardCalls, downloads, all: cf.calls };
+  return { outcome, modelCalls, guardCalls, downloads, all: cf.calls, limits: deps.limits };
 }
 
 const lead = (c: Call) => {
   const content = c.body.messages[1].content;
   return typeof content === "string" ? content : ((content as Part[])[0].text ?? "");
 };
+/** Whether the reply added a strike: the limit is 3, so two more mute only if respond already added one. */
+const struck = (limits: Limits) => {
+  limits.addStrike("u1");
+  limits.addStrike("u1");
+  return limits.isMuted("u1");
+};
 
 describe("asking about an image posted earlier in the chat, end to end", () => {
   it("lets the model look at it by the number its line shows, and answers from it", async () => {
     const { outcome, modelCalls } = await reply();
-    expect(outcome?.text).toBe("A screenshot of the raid frames: everyone is dead but the hunter.");
+    expect(outcome?.text).toBe(ANSWER);
     expect(modelCalls).toHaveLength(2);
 
     // First call: the history line numbers the image, and the tool is on offer.
-    expect(lead(modelCalls[0])).toContain("zed: [image #1]");
+    expect(lead(modelCalls[0])).toContain("amy: [image #1]");
     expect(modelCalls[0].body.tools.map((t: { function: { name: string } }) => t.function.name)).toContain(
       "view_images",
     );
@@ -164,10 +173,10 @@ describe("asking about an image posted earlier in the chat, end to end", () => {
     expect(tail[1].content).toMatch(/untrusted/);
     const follow = tail[2].content as Part[];
     expect(follow.filter((p) => p.type === "image_url").map((p) => p.image_url?.url)).toEqual([IMAGE_DATA]);
-    expect(follow.map((p) => p.text)).toContain("Image #1, posted by zed");
+    expect(follow.map((p) => p.text)).toContain("Image #1, posted by amy");
   });
 
-  it("screens the image after downloading it and before the model sees it, with no strike", async () => {
+  it("screens the image together with the question, after downloading it and before the model sees it", async () => {
     const { all } = await reply();
     const at = (pred: (c: Call) => boolean) => all.map(pred).flatMap((x, i) => (x ? [i] : []));
     const model = at((c) => c.url.endsWith("/chat/completions"));
@@ -176,6 +185,7 @@ describe("asking about an image posted earlier in the chat, end to end", () => {
     expect(model[0]).toBeLessThan(download);
     expect(download).toBeLessThan(screen);
     expect(screen).toBeLessThan(model[1]);
+    expect(all[screen].body.state).toContain("Message: what is this?");
   });
 
   it("downloads and screens nothing when the model doesn't ask to see it", async () => {
@@ -185,13 +195,20 @@ describe("asking about an image posted earlier in the chat, end to end", () => {
     expect(guardCalls.every((c) => !c.body.images)).toBe(true);
   });
 
-  it("shows no image, and still answers, when the screen flags it", async () => {
-    const { outcome, modelCalls } = await reply({ flagImage: true });
-    expect(outcome?.text).toBe("A screenshot of the raid frames: everyone is dead but the hunter.");
+  it("shows no image the screen flags, strikes no one, and lets the model say it can't see it", async () => {
+    const { outcome, modelCalls, limits } = await reply({ flag: "S4" });
+    expect(outcome?.text).toBe(CANT_SEE);
     const tail = modelCalls[1].body.messages.slice(2);
     expect(tail.map((m: { role: string }) => m.role)).toEqual(["assistant", "tool"]);
     expect(tail[1].content).toContain("Image #1 can't be shown");
     expect(JSON.stringify(modelCalls[1].body.messages)).not.toContain(IMAGE_DATA);
+    expect(struck(limits)).toBe(false);
+  });
+
+  it("sends the fixed self-harm reply, not the model's, when the image is flagged for self-harm, with no strike", async () => {
+    const { outcome, limits } = await reply({ flag: "S11" });
+    expect(outcome?.text).toBe("SELF_HARM");
+    expect(struck(limits)).toBe(false);
   });
 
   it.each([
@@ -199,7 +216,7 @@ describe("asking about an image posted earlier in the chat, end to end", () => {
     ["the model can't see images", { BILLING_MODE: "free" }],
   ])("offers no tool, and says the image isn't shown, when %s", async (_why, config) => {
     const { modelCalls, downloads } = await reply({ config });
-    expect(lead(modelCalls[0])).toContain("zed: [image, not shown]");
+    expect(lead(modelCalls[0])).toContain("amy: [image, not shown]");
     const tools = (modelCalls[0].body.tools ?? []).map((t: { function: { name: string } }) => t.function.name);
     expect(tools).not.toContain("view_images");
     expect(downloads).toHaveLength(0);

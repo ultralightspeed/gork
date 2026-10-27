@@ -115,6 +115,7 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     watch: 0,
     earlier: 0,
     earlierRoom: [] as number[],
+    earlierQuestion: [] as string[],
   };
   const cfg = testConfig();
   const dir = mkdtempSync(join(tmpdir(), "gork-"));
@@ -139,9 +140,10 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
       calls.watch++;
       return new VideoWatch(video.frames, { extract: async () => [], screen: async () => clean });
     },
-    earlierImages: (images, room) => {
+    viewEarlierImages: (images, room, question) => {
       calls.earlier++;
       calls.earlierRoom.push(room);
+      calls.earlierQuestion.push(question);
       return new EarlierImages(
         images,
         { download: async () => "data:image/png;base64,EARLIER", screen: async () => clean },
@@ -922,8 +924,10 @@ describe("a model that can't see images (free mode's glm-4.7-flash rejects them 
 
 describe("respond: images earlier in the chat", () => {
   const SHOT = "https://media.discordapp.net/attachments/1/2/shot.png";
-  const shot = { ...msg("", "zed"), images: [SHOT] };
-  const withShot = (...before: Msg[]) => ({ history: async () => [...before, msg("anyone up for MC"), shot] });
+  const shot = { ...msg("", "bob"), images: [SHOT] };
+  const withShot = (...before: Msg[]) => ({
+    history: async () => [...before, msg("anyone up for a raid tonight"), shot],
+  });
   type Seen = { messages: ChatMessage[]; earlier: EarlierImages | null };
   const capture = (seen: Seen) => async (messages: ChatMessage[], o: { earlierImages: EarlierImages | null }) => {
     seen.messages = messages;
@@ -935,9 +939,9 @@ describe("respond: images earlier in the chat", () => {
     const seen: Seen = { messages: [], earlier: null };
     const { req, deps, calls } = setup({ req: withShot(), deps: { answer: capture(seen) } });
     await respond(req, deps);
-    expect(String(seen.messages[1].content)).toContain("zed: [image #1]");
+    expect(String(seen.messages[1].content)).toContain("bob: [image #1]");
     const shown = await seen.earlier?.view({ numbers: [1] });
-    expect(shown?.images).toEqual([{ label: "Image #1, posted by zed", dataUrl: "data:image/png;base64,EARLIER" }]);
+    expect(shown?.images).toEqual([{ label: "Image #1, posted by bob", dataUrl: "data:image/png;base64,EARLIER" }]);
     expect(calls.earlier).toBe(1);
   });
 
@@ -971,8 +975,38 @@ describe("respond: images earlier in the chat", () => {
     expect(calls.earlier).toBe(0);
     expect(seen.earlier).toBeNull();
     const prompt = JSON.stringify(seen.messages);
-    expect(prompt.includes("zed: [image, not shown]")).toBe(hasImage);
+    expect(prompt.includes("bob: [image, not shown]")).toBe(hasImage);
     expect(prompt).not.toContain("[image #");
+  });
+
+  it("screens each earlier image with the asker's question", async () => {
+    const { req, deps, calls } = setup({ req: { ...withShot(), question: msg("what is this?") } });
+    await respond(req, deps);
+    expect(calls.earlierQuestion).toEqual(["what is this?"]);
+  });
+
+  it("sends the fixed self-harm reply when an earlier image the model asked for was flagged for self-harm", async () => {
+    const harm: GuardVerdict = { blocked: true, category: "S11", p: 0.95, selfHarm: true, costUsd: 0 };
+    const { req, deps, calls } = setup({
+      req: withShot(),
+      deps: {
+        viewEarlierImages: (images, room) =>
+          new EarlierImages(
+            images,
+            { download: async () => "data:image/png;base64,X", screen: async () => harm },
+            room,
+          ),
+        answer: async (_m, o) => {
+          await o.earlierImages?.view({ numbers: [1] });
+          return answered({ text: "the model's own answer" });
+        },
+      },
+    });
+    expect((await respond(req, deps))?.text).toBe("SELF_HARM");
+    expect(calls.screenReply).toBe(0); // the model's answer is never screened or posted
+    deps.limits.addStrike("u1");
+    deps.limits.addStrike("u1");
+    expect(deps.limits.isMuted("u1")).toBe(false); // the limit is 3: respond added none
   });
 
   it("logs how many earlier images the model was shown", async () => {

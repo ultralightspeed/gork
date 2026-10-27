@@ -148,15 +148,21 @@ export function screenFrames(
   return screenUntrustedImages(cfg, "Frames taken from a video attached to the message.", frames, fetchFn);
 }
 
-/** Screens images posted earlier in the chat that the model asked to see (view_images; see screenUntrustedImages). */
+/**
+ * Screens an image posted earlier in the chat that the model asked to see (view_images; see screenUntrustedImages),
+ * together with `question`, the asker's words: an image is judged by what it is asked about, as a replied-to image is.
+ */
 export function screenEarlierImages(
   cfg: Config,
+  question: string,
   images: string[],
   { fetchFn }: Pick<Options, "fetchFn"> = {},
 ): Promise<GuardVerdict> {
   return screenUntrustedImages(
     cfg,
-    "Images posted earlier in the chat, which the question may be about.",
+    `Message: ${question}
+
+An image posted earlier in the chat, which the message may be about.`,
     images,
     fetchFn,
   );
