@@ -4,6 +4,7 @@ import type { Config } from "./config.ts";
 import {
   buildMessages,
   type ChatMessage,
+  fitHistory,
   HISTORY_MAX_CHARS,
   MAX_IMAGES_PER_REQUEST,
   type Msg,
@@ -227,8 +228,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
     system,
     question,
     replyTo,
-    history,
-    historyBudgetChars: HISTORY_MAX_CHARS,
+    history: fitHistory(history, HISTORY_MAX_CHARS, deps.botName),
     images,
     unseenImages,
     failedImages,

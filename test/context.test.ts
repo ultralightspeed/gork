@@ -3,6 +3,7 @@ import {
   buildMessages,
   type ChatMessage,
   type ContentPart,
+  fitHistory,
   fitImages,
   isInvisible,
   type Msg,
@@ -121,12 +122,11 @@ describe("buildMessages", () => {
     expect(user.content).toContain('<question author="alice">\nq\n</question>'); // the question itself, not a placeholder
   });
 
-  it("keeps newest history within budget, oldest first", () => {
-    const history = Array.from({ length: 10 }, (_, i) => m({ authorName: `u${i}`, content: "x".repeat(100) }));
-    const [, user] = build({ history, historyBudgetChars: 350 });
-    expect(user.content).toContain("u9");
-    expect(user.content).not.toContain("u0:");
-    expect(String(user.content).indexOf("u8")).toBeLessThan(String(user.content).indexOf("u9"));
+  it("shows every history message it is given, oldest first, one per line", () => {
+    const [, user] = build({
+      history: [m({ authorName: "u1", content: "first" }), m({ authorName: "u2", content: "second" })],
+    });
+    expect(user.content).toContain("<channel_context>\nu1: first\nu2: second\n</channel_context>");
   });
 
   it("sends plain text without images, and image parts after the question text when there are some", () => {
@@ -201,6 +201,20 @@ describe("buildMessages", () => {
       const none = build({ video: { frames: [], transcript: "", notes: [] } }).at(1)?.content;
       expect(String(none)).not.toContain("<video>");
     });
+  });
+});
+
+describe("fitHistory", () => {
+  const history = Array.from({ length: 10 }, (_, i) => m({ authorName: `u${i}`, content: "x".repeat(100) }));
+
+  it("keeps the newest messages whose lines fit in the budget, oldest first", () => {
+    // Each line is "uN: " and 100 x's, 104 characters: three fit in 350.
+    expect(fitHistory(history, 350, "gork").map((h) => h.authorName)).toEqual(["u7", "u8", "u9"]);
+  });
+
+  it("keeps nothing when not even the newest line fits, and everything when all of it does", () => {
+    expect(fitHistory(history, 100, "gork")).toEqual([]);
+    expect(fitHistory(history, 10_000, "gork")).toEqual(history);
   });
 });
 

@@ -136,13 +136,29 @@ export function renderMsg(m: Msg, max: number, botName: string): string {
   return `${who(m, botName)}: ${body(m, max)}`.replace(/\s*\n\s*/g, " ");
 }
 
+/** Most characters of a history message's text shown in its line. */
+const HISTORY_LINE_MAX = 300;
+
+/** The newest messages of `history` (oldest first) whose lines fit in `budget` characters: the chat the model sees. */
+export function fitHistory(history: Msg[], budget: number, botName: string): Msg[] {
+  const kept: Msg[] = [];
+  let used = 0;
+  for (const h of [...history].reverse()) {
+    const length = renderMsg(h, HISTORY_LINE_MAX, botName).length;
+    if (used + length > budget) break;
+    kept.unshift(h);
+    used += length;
+  }
+  return kept;
+}
+
 export function buildMessages(o: {
   botName: string;
   system: string;
   question: Msg;
   replyTo: Msg | null;
+  /** Recent chat, oldest first, already cut to fit (fitHistory): every message gets a line. */
   history: Msg[];
-  historyBudgetChars?: number;
   images?: string[];
   /** Images attached to the question or replied-to message that weren't sent, because the model takes none. */
   unseenImages?: number;
@@ -150,16 +166,7 @@ export function buildMessages(o: {
   failedImages?: number;
   video?: VideoContext;
 }): ChatMessage[] {
-  const budget = o.historyBudgetChars ?? 4000;
-  const lines: string[] = [];
-  let used = 0;
-  // history arrives oldest-first; keep the newest lines that fit, then restore order
-  for (const h of [...o.history].reverse()) {
-    const line = renderMsg(h, 300, o.botName);
-    if (used + line.length > budget) break;
-    lines.unshift(line);
-    used += line.length;
-  }
+  const lines = o.history.map((h) => renderMsg(h, HISTORY_LINE_MAX, o.botName));
   const blocks: string[] = [];
   if (lines.length) blocks.push(`<channel_context>\n${lines.join("\n")}\n</channel_context>`);
   if (o.replyTo)
