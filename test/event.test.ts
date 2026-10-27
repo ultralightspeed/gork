@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  asksToDelete,
   deletedNote,
   editedTimes,
   eventEditScreenText,
   eventIdFrom,
   formatEventList,
-  namesEvent,
   parseEvent,
   parseEventEdit,
   parseEventLink,
@@ -296,52 +294,11 @@ describe("parseEventLink and eventIdFrom", () => {
   });
 });
 
-describe("namesEvent", () => {
-  it("finds the event named by its id (alone or in its link) or a word of its name, in any of the texts", () => {
-    expect(namesEvent(["cancel raid night"], raid)).toBe(true);
-    expect(namesEvent(["delete the RAID pls"], raid)).toBe(true);
-    expect(namesEvent(["delete this", "https://discord.com/events/1/100"], raid)).toBe(true);
-    expect(namesEvent(["delete 100"], raid)).toBe(true);
-    expect(namesEvent(["delete it", null], raid)).toBe(false);
-  });
-
-  it("doesn't count short words, articles or the delete words as naming it, nor its id inside another number", () => {
-    const run = { ...raid, name: "Cancel the AoE run" };
-    expect(namesEvent(["cancel the event"], run)).toBe(false);
-    expect(namesEvent(["cancel the aoe one"], run)).toBe(true);
-    expect(namesEvent(["delete it", "https://discord.com/events/1/1000"], raid)).toBe(false);
-  });
-
-  it("counts only words that tell it apart from the other events, numbers included", () => {
-    const movie = { ...raid, id: "101", name: "Movie night" };
-    expect(namesEvent(["cancel movie night"], raid, [movie])).toBe(false);
-    expect(namesEvent(["cancel raid night"], raid, [movie])).toBe(true);
-    const second = { ...raid, id: "102", name: "Raid night 2" };
-    expect(namesEvent(["delete raid night 2"], second, [raid])).toBe(true);
-    expect(namesEvent(["delete raid night"], raid, [second])).toBe(false);
-    expect(namesEvent(["delete that one", raid.link], raid, [second])).toBe(true);
-  });
-});
-
 describe("deletedNote", () => {
   it("names the deleted event and its time, on one line, in each reader's zone", () => {
     expect(deletedNote({ ...raid, name: "Raid\nnight" })).toBe(
       `Deleted event: Raid night (<t:${Date.parse("2026-10-23T20:00:00Z") / 1000}:F>)`,
     );
-  });
-});
-
-describe("asksToDelete", () => {
-  it("hears delete, cancel and remove in any form", () => {
-    for (const text of ["delete the raid", "Cancel it", "it's cancelled", "remove movie night", "deleting pls"]) {
-      expect(asksToDelete(text), text).toBe(true);
-    }
-  });
-
-  it("doesn't hear other words, even ones that mean the same", () => {
-    for (const text of ["move the raid to 9", "nuke it", "get rid of it", "what events are there", "undeleted"]) {
-      expect(asksToDelete(text), text).toBe(false);
-    }
   });
 });
 

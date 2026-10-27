@@ -90,11 +90,6 @@ export type RespondRequest = {
   refusals?: { event?: string; poll?: string };
   /** The server's events as the asker can see them, for the event tools; null outside a server. */
   events: ServerEvents | null;
-  /**
-   * The asker's own words, without what they forwarded, and the text of the message they replied to: deleting an
-   * event needs a delete word in the first and the event named in either.
-   */
-  asked: { text: string; replyTo: string | null };
   history: () => Promise<Msg[]>;
   /** Called once all gates pass and real work starts (the adapter starts typing). */
   onWorking?: () => void;
@@ -141,7 +136,6 @@ export type RespondDeps = {
       mayCreatePolls: boolean;
       refusals?: { event?: string; poll?: string };
       events: ServerEvents | null;
-      asked: { text: string; replyTo: string | null };
       video: VideoWatch | null;
       earlierImages: EarlierImages | null;
       links: LinkSet;
@@ -291,7 +285,6 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
       mayCreatePolls: req.mayCreatePolls,
       refusals: req.refusals,
       events: req.events,
-      asked: req.asked,
       video: look,
       earlierImages: earlier,
       links,

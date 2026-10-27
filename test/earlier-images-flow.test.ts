@@ -138,7 +138,6 @@ async function reply(o: { modelAsks?: boolean; flag?: "S4" | "S11"; config?: Rec
     mayCreateEvents: false,
     mayCreatePolls: false,
     events: null,
-    asked: { text: "", replyTo: null },
     history: async () => [msg("bob", "anyone up for a raid tonight"), msg("amy", "", [IMAGE_URL])],
   };
   const outcome = await respond(req, deps);

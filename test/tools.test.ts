@@ -844,9 +844,8 @@ describe("event tools: list_events, edit_event and delete_event", () => {
     list: async () => events,
     channelsFor: () => [{ id: "10", name: "Raid Voice", stage: false }],
   });
-  const asked = (text: string, replyTo: string | null = null) => ({ asked: { text, replyTo } });
   const run = (name: string, args: unknown, deps: Parameters<typeof callTool>[3] = {}) =>
-    callTool(cfg, name, JSON.stringify(args), { events: board(), now, ...asked("delete raid night"), ...deps });
+    callTool(cfg, name, JSON.stringify(args), { events: board(), now, ...deps });
 
   it("are offered to every request, and cost nothing", async () => {
     const names = toolDefs(cfg).map((t) => t.function.name);
@@ -972,28 +971,12 @@ describe("event tools: list_events, edit_event and delete_event", () => {
     }
   });
 
-  it("delete_event deletes only when the asker's own message says delete, cancel or remove", async () => {
-    const refused = await run("delete_event", { event: "100" }, asked("what events are there? raid night?"));
-    expect(refused.change).toBeUndefined();
-    expect(refused.content).toMatch(/has to say delete, cancel or remove/);
+  it("delete_event returns the deletion for after the reply, with no wording check: the model reads the request", async () => {
     const r = await run("delete_event", { event: "100" });
     expect(r.change).toEqual({ kind: "delete", event: raid });
     expect(r.content).toContain('"Raid night"');
     expect(r.content).toMatch(/right after your reply/);
-  });
-
-  it("delete_event deletes only an event the asker named, in their message or the one they replied to", async () => {
-    const unnamed = await run("delete_event", { event: "100" }, asked("delete it"));
-    expect(unnamed.change).toBeUndefined();
-    expect(unnamed.content).toMatch(/has to name the event/);
-    const otherOne = await run("delete_event", { event: "100" }, asked("cancel movie night"));
-    expect(otherOne.change).toBeUndefined();
-    const byReply = await run(
-      "delete_event",
-      { event: "100" },
-      asked("delete this", "https://discord.com/events/1/100"),
-    );
-    expect(byReply.change).toMatchObject({ kind: "delete", event: { id: "100" } });
+    expect(r.costUsd).toBe(0);
   });
 
   it("delete_event won't delete a repeating event, which would delete every time it repeats", async () => {

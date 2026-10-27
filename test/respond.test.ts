@@ -197,7 +197,6 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     mayCreateEvents: true,
     mayCreatePolls: true,
     events: null,
-    asked: { text: "what is the capital of australia", replyTo: null },
     history: async () => {
       calls.history++;
       return [msg("earlier message", "bob")];
@@ -575,24 +574,20 @@ describe("respond: the answer and the reply screen", () => {
       });
     });
 
-    it("hands the model the server's events and what the asker wrote, for the event tools", async () => {
+    it("hands the model the server's events, for the event tools", async () => {
       const events: ServerEvents = { guildId: "1", list: async () => [onServer], channelsFor: () => [] };
-      const asked: { text: string; replyTo: string | null } = {
-        text: "delete raid night",
-        replyTo: "raid night is friday",
-      };
-      let told: { events: ServerEvents | null; asked: typeof asked } | undefined;
+      let told: ServerEvents | null | undefined;
       const { req, deps } = setup({
-        req: { events, asked },
+        req: { events },
         deps: {
           answer: async (_m, opts) => {
-            told = { events: opts.events, asked: opts.asked };
+            told = opts.events;
             return answered();
           },
         },
       });
       await respond(req, deps);
-      expect(told).toEqual({ events, asked });
+      expect(told).toBe(events);
     });
 
     it("logs which kind of change the reply makes", async () => {

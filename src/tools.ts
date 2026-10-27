@@ -5,7 +5,6 @@ import { DailyCounter } from "./dailycounter.ts";
 import { EARLIER_IMAGES_PER_CALL, EARLIER_IMAGES_PER_REPLY, type EarlierImages } from "./earlierimages.ts";
 import { describeError } from "./errors.ts";
 import {
-  asksToDelete,
   DEFAULT_HOURS as DEFAULT_EVENT_HOURS,
   DEFAULT_LOCATION,
   type EventChange,
@@ -21,7 +20,6 @@ import {
   MAX_LOCATION,
   MAX_NAME,
   MIN_LEAD_MINUTES,
-  namesEvent,
   oneLine,
   parseEvent,
   parseEventEdit,
@@ -125,11 +123,6 @@ type ToolContext = {
   mayCreateEvents: boolean;
   /** The server's events as the asker can see them: what list_events, edit_event and delete_event read. */
   events: ServerEvents | null;
-  /**
-   * The asker's own words (not what they forwarded) and the message they replied to: delete_event needs a delete word
-   * in the first, and the event named in either.
-   */
-  asked: { text: string; replyTo: string | null };
   /** This request may post a poll: the asker and the bot both have Send Polls here. */
   mayCreatePolls: boolean;
   /** When an event or poll may not be made, what the model is told: the one reason that applies. */
@@ -186,13 +179,13 @@ async function listEvents(events: ServerEvents, ctx: ToolContext): Promise<Serve
 }
 
 /**
- * The event an edit or deletion names (with the other events the asker can see, and the server's events), when this
- * request may change it; otherwise what the model is told instead.
+ * The event an edit or deletion names (with the server's events), when this request may change it; otherwise what the
+ * model is told instead.
  */
 async function eventToChange(
   args: Record<string, unknown>,
   ctx: ToolContext,
-): Promise<{ found: ServerEvent; others: ServerEvent[]; events: ServerEvents } | ToolResult> {
+): Promise<{ found: ServerEvent; events: ServerEvents } | ToolResult> {
   if (!ctx.events) return { content: "You can't see or change the server's events for this request.", costUsd: 0 };
   if (ctx.tally.events >= 1) return { content: ONE_EVENT_CHANGE, costUsd: 0 };
   const ref = eventIdFrom(args.event, ctx.events.guildId);
@@ -213,7 +206,7 @@ async function eventToChange(
       costUsd: 0,
     };
   }
-  return { found, others: events.filter((e) => e !== found), events: ctx.events };
+  return { found, events: ctx.events };
 }
 
 /**
@@ -517,30 +510,20 @@ const allTools = (cfg: Config): Tool[] => [
   {
     def: fn(
       "delete_event",
-      "Delete a scheduled event on this Discord server, only when the person asking says to delete, cancel or remove it. Name it by its id from list_events or its discord.com/events link. It is deleted right after your reply and can't be brought back, so say which event goes and when it was. One event change per reply, counting create_event and edit_event.",
+      "Delete a scheduled event on this Discord server, when the person asking wants it deleted or called off. Name it by its id from list_events or its discord.com/events link. It is deleted right after your reply and can't be brought back, so say which event goes and when it was. One event change per reply, counting create_event and edit_event.",
       { event: { type: "string", description: "Its id from list_events, or its discord.com/events link." } },
       ["event"],
     ),
     run: async (args, ctx) => {
-      const refused = (why: string) => ({
-        content: `You can't delete this event for this request: ${why} Tell them briefly, and don't say it was deleted.`,
-        costUsd: 0,
-      });
-      if (!asksToDelete(ctx.asked.text)) {
-        return refused("the person asking has to say delete, cancel or remove in their own message.");
-      }
       const target = await eventToChange(args, ctx);
       if (!("found" in target)) return target;
       const ev = target.found;
       if (ev.repeats) {
-        return refused(
-          "it repeats, and deleting it would delete every time it repeats. They can delete it, or cancel one time, in Discord.",
-        );
-      }
-      if (!namesEvent([ctx.asked.text, ctx.asked.replyTo], ev, target.others)) {
-        return refused(
-          "the person asking has to name the event in their message (a word of its name that no other event's name has, or its link), or reply to a message that does.",
-        );
+        return {
+          content:
+            "You can't delete this event for this request: it repeats, and deleting it would delete every time it repeats. They can delete it, or cancel one time, in Discord. Tell them briefly, and don't say it was deleted.",
+          costUsd: 0,
+        };
       }
       return {
         content: `Deletion ready: "${oneLine(ev.name)}" (${formatLocalNow(ev.start, cfg.timeZone)} ${cfg.timeZone}) will be deleted right after your reply, and a note saying so posted. It can't be brought back, so say in a short line which event goes and when it was.`,
@@ -654,8 +637,6 @@ export async function runTool(
     refusals?: { event?: string; poll?: string };
     /** The server's events as the asker can see them; without them the event tools say they can't see any. */
     events?: ServerEvents;
-    /** What the asker wrote and the message they replied to (see ToolContext); without it nothing is deleted. */
-    asked?: { text: string; replyTo: string | null };
     /** The video this request is about, if any; without one the model has no video_frames tool. */
     video?: VideoWatch;
     /** The images earlier in the chat the model may see, if any; without them it has no view_images tool. */
@@ -690,7 +671,6 @@ export async function runTool(
       mayPingEveryone: deps.mayPingEveryone ?? false,
       mayCreateEvents: deps.mayCreateEvents ?? false,
       events: deps.events ?? null,
-      asked: deps.asked ?? { text: "", replyTo: null },
       mayCreatePolls: deps.mayCreatePolls ?? false,
       refusals: deps.refusals ?? {},
       video: deps.video ?? null,

@@ -133,7 +133,7 @@ async function main(): Promise<void> {
     screenReply: (question, text) => screenReply(cfg, question, text),
     screenImages: (images, context) => screenImages(cfg, images, context),
     answer: (messages, opts) => {
-      const { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, events, asked } = opts;
+      const { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, events } = opts;
       const { video, earlierImages, links } = opts;
       return answer(cfg, messages, {
         reserve: (usd) => budget.tryReserve(usd),
@@ -150,7 +150,6 @@ async function main(): Promise<void> {
             mayCreatePolls,
             refusals,
             events: events ?? undefined,
-            asked,
             video: video ?? undefined,
             earlierImages: earlierImages ?? undefined,
             links,
@@ -163,8 +162,7 @@ async function main(): Promise<void> {
   async function handle(message: Message): Promise<void> {
     const selfId = client.user?.id;
     const roles = [botRoleId(message)].filter((r): r is string => !!r);
-    // The asker's own words without the mention of gork, and without anything they forwarded (the question's text has
-    // that too): what the @everyone and event-deletion checks read.
+    // The asker's own words without the mention of gork: what the @everyone check reads.
     const askerText = stripTrigger(message.content, selfId ?? "", roles);
     const question = toMsg(message, resolveNames(message, askerText), selfId);
     // Forwards also carry a reference, but their content is already in the snapshot; only follow real replies.
@@ -194,7 +192,6 @@ async function main(): Promise<void> {
           mayCreatePolls: pollNo === null,
           refusals: { event: eventNo ?? undefined, poll: pollNo ?? undefined },
           events: message.guild && access ? serverEvents(message.guild, access) : null,
-          asked: { text: askerText, replyTo: ref?.content ?? null },
           history: async () => {
             const fetched = await message.channel.messages
               .fetch({ limit: cfg.limits.contextMessages, before: message.id })

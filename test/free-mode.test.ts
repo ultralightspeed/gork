@@ -124,7 +124,6 @@ async function fullReply(env: Record<string, string>) {
     mayCreateEvents: false,
     mayCreatePolls: false,
     events: null,
-    asked: { text: "", replyTo: null },
     history: async () => [],
   };
   const outcome = await respond(req, deps);

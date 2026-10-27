@@ -1,6 +1,6 @@
 # What gork does in your server
 
-gork screens what it reads and writes for harmful content. Besides writing a reply, it can ping people, create, change and delete events, post polls and images, and show link previews. Each of these is limited by the permissions the person asking has. @everyone also needs the asker to say "everyone", and deleting an event needs them to say delete, cancel or remove and name the event.
+gork screens what it reads and writes for harmful content. Besides writing a reply, it can ping people, create, change and delete events, post polls and images, and show link previews. Each of these is limited by the permissions the person asking has. @everyone also needs the asker to say "everyone".
 
 ## Safety
 
@@ -72,9 +72,8 @@ gork does to an event only what the person asking could do themselves, and what 
 - **Creating** an event needs Create Events on the server, for the person asking and for gork (Administrator includes it). Manage Events alone is not enough.
 - **Changing or deleting** an event needs Manage Events, or Create Events for an event you made yourself. The person asking and gork each need it. Discord counts an event gork made as gork's, so changing one needs Manage Events, even for the person who asked for it.
 - gork's invite link in [setup.md](setup.md#setting-up-by-hand) asks for Create Events and leaves out Manage Events, so gork can change and delete only the events it made. To let it change other people's events, give its role Manage Events.
-- **Deleting** also needs two things in the asker's own message (not what they forwarded): one of the words delete, cancel or remove (in any form, in English), and the event named. A word of its name that no other event's name has counts, and so does its link. The name or link can also be in the message they reply to, such as the link gork posted when it made the event. The words are matched, not understood, so gork still has to read the request right; this keeps it from deleting an event nobody named.
 - A deleted event can't be brought back, and the list of who was interested goes with it. gork says in its reply which event it deletes and when it was, and posts a note naming it afterwards.
-- Creating and changing have no wording check. A web page or chat message could in principle talk gork into creating or changing an event, but only one the person asking may create or change, one per reply, screened, and named in gork's reply. That risk is accepted as low.
+- There is no wording check: gork works out from the conversation what you want ("cancel movie night", "get rid of the raid"). A web page or chat message could in principle talk gork into creating, changing or deleting an event, but only one the person asking may create, change or delete themselves, one per reply, screened, and named in gork's reply. A deletion can't be undone, so it is the larger risk; it is accepted, within those limits.
 
 If either of you lacks a permission, gork says which and does nothing. It is told this before it answers, so it does not claim to have done it. `npm run doctor` warns when gork lacks Create Events.
 

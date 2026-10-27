@@ -276,30 +276,6 @@ export function eventIdFrom(ref: unknown, guildId: string): { id: string } | { e
   return { id: link.eventId };
 }
 
-/** Whether the asker's own words ask for something to go: delete, cancel or remove, in any form ("cancelled"). */
-export const asksToDelete = (text: string): boolean => /\b(?:delet|cancel|remov)\w*/i.test(stripInvisible(text));
-
-/** Words that don't name an event even when its name has them: articles, and the words that ask for a deletion. */
-const NOT_A_NAME_WORD = /^(?:the|and|delet\w*|cancel\w*|remov\w*)$/;
-const words = (text: string): string[] =>
-  stripInvisible(text)
-    .toLowerCase()
-    .match(/[\p{L}\p{N}]+/gu) ?? [];
-
-/**
- * Whether any of the texts names this event among `others`, the other events the asker can see: by its id (alone or in
- * its link), or by a word of its name that tells it apart, one of three or more letters or a number that no other's
- * name has. What delete_event asks of the asker's words, so a deletion has a target they named.
- */
-export function namesEvent(texts: (string | null)[], ev: ServerEvent, others: ServerEvent[] = []): boolean {
-  const said = new Set(texts.flatMap((t) => (t ? words(t) : [])));
-  if (said.has(ev.id)) return true;
-  const shared = new Set(others.flatMap((o) => words(o.name)));
-  return words(ev.name).some(
-    (w) => (w.length >= 3 || /^\d+$/.test(w)) && !NOT_A_NAME_WORD.test(w) && !shared.has(w) && said.has(w),
-  );
-}
-
 /** Text members wrote, on one line (so it can't pose as another entry) and at most `max` characters. */
 export const oneLine = (text: string, max: number = MAX_NAME): string => {
   const flat = text.replace(/\s+/g, " ").trim();

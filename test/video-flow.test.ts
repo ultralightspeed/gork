@@ -146,7 +146,6 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
     mayCreateEvents: false,
     mayCreatePolls: false,
     events: null,
-    asked: { text: "", replyTo: null },
     history: async () => [],
   };
   const outcome = await respond(req, deps);
