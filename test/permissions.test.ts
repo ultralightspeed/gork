@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canCreateEvents, canHoldEvent, channelAbilities, type Permission } from "../src/permissions.ts";
+import {
+  canCreateEvents,
+  canHoldEvent,
+  canUseEventChannel,
+  channelAbilities,
+  eventChangeBlock,
+  type Permission,
+} from "../src/permissions.ts";
 
 const has =
   (...granted: Permission[]) =>
@@ -68,5 +75,43 @@ describe("canHoldEvent", () => {
       expect(canHoldEvent(has(...stage.filter((p) => p !== missing)), true), missing).toBe(false);
     }
     expect(canHoldEvent(has("ViewChannel", "Connect", "CreateEvents"), true)).toBe(false);
+  });
+});
+
+describe("canUseEventChannel", () => {
+  it("asks only for the channel's own permissions, whoever made the event", () => {
+    expect(canUseEventChannel(has("ViewChannel", "Connect"), false)).toBe(true);
+    expect(canUseEventChannel(has("ViewChannel"), false)).toBe(false);
+    expect(canUseEventChannel(has("ViewChannel", "ManageChannels", "MuteMembers", "MoveMembers"), true)).toBe(true);
+    expect(canUseEventChannel(has("ViewChannel", "Connect"), true)).toBe(false);
+  });
+});
+
+describe("eventChangeBlock", () => {
+  const atLocation = { own: false, channel: "none" } as const;
+
+  it("lets Manage Events change any event, and Create Events only an event of one's own", () => {
+    expect(eventChangeBlock(has("ManageEvents"), atLocation)).toBeNull();
+    expect(eventChangeBlock(has("CreateEvents"), { ...atLocation, own: true })).toBeNull();
+    expect(eventChangeBlock(has("ManageEvents"), { ...atLocation, own: true })).toBeNull();
+  });
+
+  it("names what's missing: Manage Events for someone else's event, Create Events for one's own", () => {
+    expect(eventChangeBlock(has("CreateEvents"), atLocation)).toBe("manage");
+    expect(eventChangeBlock(has(), atLocation)).toBe("manage");
+    expect(eventChangeBlock(has(), { ...atLocation, own: true })).toBe("create");
+  });
+
+  it("also asks for the channel's permissions when the event is in a voice or Stage channel", () => {
+    const voice = { own: false, channel: "voice" } as const;
+    expect(eventChangeBlock(has("ManageEvents", "ViewChannel", "Connect"), voice)).toBeNull();
+    expect(eventChangeBlock(has("ManageEvents", "ViewChannel"), voice)).toBe("channel");
+    const stage = { own: false, channel: "stage" } as const;
+    expect(eventChangeBlock(has("ManageEvents", "ViewChannel", "Connect"), stage)).toBe("channel");
+    expect(
+      eventChangeBlock(has("ManageEvents", "ViewChannel", "ManageChannels", "MuteMembers", "MoveMembers"), stage),
+    ).toBeNull();
+    // The event permission is named first: a channel permission can't make up for it.
+    expect(eventChangeBlock(has("ViewChannel", "Connect"), voice)).toBe("manage");
   });
 });

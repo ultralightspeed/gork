@@ -1,7 +1,14 @@
-import type { Message } from "discord.js";
+import { ChannelType, type Message } from "discord.js";
 import { describe, expect, it } from "vitest";
 import type { Msg } from "../src/context.ts";
-import { eventRefusal, pingContext, pollRefusal, splitImageUrls } from "../src/discord-access.ts";
+import {
+  eventAccess,
+  eventChangeWhyNot,
+  eventRefusal,
+  pingContext,
+  pollRefusal,
+  splitImageUrls,
+} from "../src/discord-access.ts";
 
 type User = { id: string; bot: boolean; username: string; displayName: string };
 const user = (id: string, bot = false): User => ({ id, bot, username: `u${id}`, displayName: `U${id}` });
@@ -61,6 +68,103 @@ describe("eventRefusal", () => {
   it("names the one permission that's missing", () => {
     expect(eventRefusal(message({ botPerms: ["CreateEvents"] }))).toMatch(/person asking doesn't have/);
     expect(eventRefusal(message({ askerPerms: ["CreateEvents"] }))).toMatch(/you don't have/);
+  });
+});
+
+describe("eventChangeWhyNot", () => {
+  const others = { madeBy: "other", stage: false } as const;
+
+  it("is null when neither the asker nor gork is held back", () => {
+    expect(eventChangeWhyNot(null, null, others)).toBeNull();
+  });
+
+  it("names what the asker lacks first, then what gork lacks and how an admin can give it", () => {
+    expect(eventChangeWhyNot("manage", "manage", others)).toMatch(
+      /someone else made it.*Manage Events permission, which the person asking doesn't have/,
+    );
+    expect(eventChangeWhyNot(null, "manage", others)).toMatch(
+      /you can change only events you made.*server admin can give your role Manage Events/,
+    );
+  });
+
+  it("explains that Discord counts an event gork made as gork's, not the asker's", () => {
+    expect(eventChangeWhyNot("manage", null, { madeBy: "gork", stage: false })).toMatch(/counts it as yours/);
+  });
+
+  it("names Create Events for an event of one's own", () => {
+    expect(eventChangeWhyNot("create", null, { madeBy: "asker", stage: false })).toMatch(
+      /person asking doesn't have the Create Events or Manage Events permission/,
+    );
+    expect(eventChangeWhyNot(null, "create", { madeBy: "gork", stage: false })).toMatch(
+      /you don't have the Create Events permission/,
+    );
+  });
+
+  it("names the channel when that is what's missing", () => {
+    expect(eventChangeWhyNot("channel", null, others)).toMatch(/voice channel the person asking can't connect to/);
+    expect(eventChangeWhyNot(null, "channel", { madeBy: "other", stage: true })).toMatch(
+      /Stage channel.*you don't have Manage Channels, Mute Members and Move Members/,
+    );
+  });
+});
+
+describe("eventAccess", () => {
+  const asker = { id: "u1", permissions: { has: (p: string) => p === "ManageEvents" } };
+  const me = { id: "b1", permissions: { has: (p: string) => p === "CreateEvents" } };
+  const everyone = { permissions: { has: (p: string) => p === "ViewChannel" } };
+  /** A channel where the asker may only connect, gork may only view, and every member may view if `open`. */
+  const channel = (id: string, name: string, type: ChannelType, open: boolean) => ({
+    id,
+    name,
+    type,
+    isVoiceBased: () => type === ChannelType.GuildVoice || type === ChannelType.GuildStageVoice,
+    permissionsFor: (m: unknown) => ({
+      has: (p: string) =>
+        m === everyone ? open && p === "ViewChannel" : p === (m === asker ? "Connect" : "ViewChannel"),
+    }),
+  });
+  const message = {
+    member: asker,
+    guild: {
+      members: { me },
+      roles: { everyone },
+      channels: {
+        cache: new Map([
+          ["10", channel("10", "Raid Voice", ChannelType.GuildVoice, true)],
+          ["11", channel("11", "Town Hall", ChannelType.GuildStageVoice, false)],
+          ["12", channel("12", "general", ChannelType.GuildText, true)],
+        ]),
+      },
+    },
+  } as unknown as Message;
+
+  it("reads server-wide permissions for an event at a location, and the channel's own for one in a channel", () => {
+    const access = eventAccess(message);
+    expect(access).toMatchObject({ askerId: "u1", botId: "b1" });
+    expect(access?.has("asker", "ManageEvents", null)).toBe(true);
+    expect(access?.has("bot", "ManageEvents", null)).toBe(false);
+    expect(access?.has("asker", "Connect", "10")).toBe(true);
+    expect(access?.has("asker", "ManageEvents", "10")).toBe(false);
+    expect(access?.has("bot", "ViewChannel", "10")).toBe(true);
+    expect(access?.has("bot", "ViewChannel", "99")).toBe(false);
+  });
+
+  it("reads what every member may do, from the @everyone role", () => {
+    const access = eventAccess(message);
+    expect(access?.has("everyone", "ViewChannel", null)).toBe(true);
+    expect(access?.has("everyone", "ViewChannel", "10")).toBe(true);
+    expect(access?.has("everyone", "ViewChannel", "11")).toBe(false);
+  });
+
+  it("lists the voice and Stage channels, and nothing else", () => {
+    expect(eventAccess(message)?.voiceChannels()).toEqual([
+      { id: "10", name: "Raid Voice", stage: false },
+      { id: "11", name: "Town Hall", stage: true },
+    ]);
+  });
+
+  it("is null outside a server", () => {
+    expect(eventAccess({ member: null, guild: null } as unknown as Message)).toBeNull();
   });
 });
 

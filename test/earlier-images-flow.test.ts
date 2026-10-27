@@ -40,6 +40,8 @@ const replies: Replies = {
   noPoll: "(NO_POLL)",
   noEvent: "(NO_EVENT)",
   eventFailed: "(EVENT_FAILED)",
+  eventChangeFailed: "(EVENT_CHANGE_FAILED)",
+  eventDeleteFailed: "(EVENT_DELETE_FAILED)",
 };
 const msg = (authorName: string, content: string, images: string[] = []): Msg => ({
   authorName,
@@ -135,6 +137,8 @@ async function reply(o: { modelAsks?: boolean; flag?: "S4" | "S11"; config?: Rec
     mayPingEveryone: false,
     mayCreateEvents: false,
     mayCreatePolls: false,
+    events: null,
+    asked: { text: "", replyTo: null },
     history: async () => [msg("bob", "anyone up for a raid tonight"), msg("amy", "", [IMAGE_URL])],
   };
   const outcome = await respond(req, deps);

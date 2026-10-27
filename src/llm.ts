@@ -1,7 +1,7 @@
 import { CfError, isFreeAllowanceExhausted, readText, unwrapResult, withoutSecrets } from "./cf.ts";
 import type { Config } from "./config.ts";
 import { type ChatMessage, fitImages, forWire, type ToolImage, toolImagesMessage } from "./context.ts";
-import type { ScheduledEvent } from "./event.ts";
+import type { EventChange, ScheduledEvent } from "./event.ts";
 import type { Poll } from "./poll.ts";
 import { type Attachment, type ReplyTally, type ToolOffer, type ToolResult, type ToolTurn, toolDefs } from "./tools.ts";
 
@@ -17,6 +17,8 @@ export type LlmResult = {
   attachments: Attachment[];
   poll: Poll | null;
   event: ScheduledEvent | null;
+  /** An edit or deletion of an event on the server; a reply has this or `event`, never both. */
+  change: EventChange | null;
   /** A tool asked for this reply to ping @everyone/@here. */
   pingEveryone: boolean;
   /** Web searches made on each provider: SEARCH_PROVIDER, and the fallback. */
@@ -155,6 +157,7 @@ export async function answer(
   const attachments: Attachment[] = [];
   let poll: Poll | null = null;
   let event: ScheduledEvent | null = null;
+  let change: EventChange | null = null;
   let pingEveryone = false;
   const convo = [...messages];
   let toolCalls = 0,
@@ -186,6 +189,7 @@ export async function answer(
     attachments,
     poll,
     event,
+    change,
     pingEveryone,
     searches: { primary: searches.primary, fallback: searches.fallback },
   });
@@ -231,7 +235,7 @@ export async function answer(
           {
             images: attachments.length,
             polls: poll ? 1 : 0,
-            events: event ? 1 : 0,
+            events: event || change ? 1 : 0,
             searchesRun: searches.run,
             fallbackSearches: searches.fallback,
           },
@@ -246,7 +250,9 @@ export async function answer(
         if (r.images) roundImages.push(...r.images);
         if (r.attachment) attachments.push(r.attachment);
         if (r.poll && !poll) poll = r.poll;
-        if (r.event && !event) event = r.event;
+        // The tools refuse a second event change, so the first one is the only one; this keeps it that way.
+        if (r.event && !event && !change) event = r.event;
+        if (r.change && !change && !event) change = r.change;
         if (r.pingEveryone) pingEveryone = true;
       }
       convo.push({ role: "tool", tool_call_id: call.id, content });

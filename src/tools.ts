@@ -1,21 +1,35 @@
 import { FreeAllowanceError } from "./cf.ts";
 import type { Config } from "./config.ts";
-import type { ToolImage } from "./context.ts";
+import { stripInvisible, type ToolImage } from "./context.ts";
 import { DailyCounter } from "./dailycounter.ts";
 import { EARLIER_IMAGES_PER_CALL, EARLIER_IMAGES_PER_REPLY, type EarlierImages } from "./earlierimages.ts";
 import { describeError } from "./errors.ts";
 import {
+  asksToDelete,
   DEFAULT_HOURS as DEFAULT_EVENT_HOURS,
   DEFAULT_LOCATION,
+  type EventChange,
+  type EventEdit,
+  editedTimes,
+  eventIdFrom,
   externalEnd,
+  formatEventList,
   LOCAL_FORMAT,
   MAX_DAYS_AHEAD,
   MAX_DESCRIPTION,
+  MAX_LISTED_EVENTS,
   MAX_LOCATION,
   MAX_NAME,
   MIN_LEAD_MINUTES,
+  namesEvent,
+  oneLine,
   parseEvent,
+  parseEventEdit,
+  parseEventLink,
+  pickVoiceChannel,
   type ScheduledEvent,
+  type ServerEvent,
+  type ServerEvents,
 } from "./event.ts";
 import { MAX_FRAMES_PER_SECOND } from "./ffmpeg.ts";
 import { type GeneratedImage, generateImage } from "./imagegen.ts";
@@ -49,6 +63,8 @@ export type ToolResult = {
   attachment?: Attachment;
   poll?: Poll;
   event?: ScheduledEvent;
+  /** An edit or deletion of an event on the server, made after the reply goes out. */
+  change?: EventChange;
   /** The model asked for this reply to ping @everyone/@here (still subject to the asker's permission). */
   pingEveryone?: true;
   /** Images for the model to look at (llm.ts delivers them in a user message after the round's tool messages). */
@@ -69,6 +85,7 @@ type ToolState = {
 export type ReplyTally = {
   images: number;
   polls: number;
+  /** Events this reply creates, changes or deletes, counted together. */
   events: number;
   /** Web searches this reply has run (a call refused before any provider was asked doesn't count). */
   searchesRun: number;
@@ -104,9 +121,16 @@ type ToolContext = {
   log?: (line: string) => void;
   /** This request may ping @everyone: the setting allows it and the asker can and asked to. */
   mayPingEveryone: boolean;
-  /** This request may create a scheduled event: the asker and the bot both have Create Events, and the asker asked. */
+  /** This request may create a scheduled event: the asker and the bot both have Create Events on the server. */
   mayCreateEvents: boolean;
-  /** This request may post a poll: the asker and the bot both have Send Polls here, and the asker asked. */
+  /** The server's events as the asker can see them: what list_events, edit_event and delete_event read. */
+  events: ServerEvents | null;
+  /**
+   * The asker's own words (not what they forwarded) and the message they replied to: delete_event needs a delete word
+   * in the first, and the event named in either.
+   */
+  asked: { text: string; replyTo: string | null };
+  /** This request may post a poll: the asker and the bot both have Send Polls here. */
   mayCreatePolls: boolean;
   /** When an event or poll may not be made, what the model is told: the one reason that applies. */
   refusals: { event?: string; poll?: string };
@@ -146,6 +170,88 @@ const linkRefused = (cfg: Config) =>
 
 /** Whether a link the reply may open is this YouTube video, in any URL shape. */
 const videoGiven = (links: LinkSet, id: string) => links.list().some((url) => parseVideoId(url) === id);
+
+/** What the model is told when a reply already has its one event change. */
+const ONE_EVENT_CHANGE =
+  "This reply already creates, changes or deletes an event, and that's the limit: one event change per reply (create_event, edit_event and delete_event count together).";
+
+/** The server's events, or what the model is told when Discord doesn't give them. Never throws. */
+async function listEvents(events: ServerEvents, ctx: ToolContext): Promise<ServerEvent[] | string> {
+  try {
+    return await events.list();
+  } catch (err) {
+    ctx.log?.(`events: couldn't read the server's events: ${describeError(err)}`);
+    return "Discord didn't give the server's events just now, so you couldn't check. Say so.";
+  }
+}
+
+/**
+ * The event an edit or deletion names (with the other events the asker can see, and the server's events), when this
+ * request may change it; otherwise what the model is told instead.
+ */
+async function eventToChange(
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<{ found: ServerEvent; others: ServerEvent[]; events: ServerEvents } | ToolResult> {
+  if (!ctx.events) return { content: "You can't see or change the server's events for this request.", costUsd: 0 };
+  if (ctx.tally.events >= 1) return { content: ONE_EVENT_CHANGE, costUsd: 0 };
+  const ref = eventIdFrom(args.event, ctx.events.guildId);
+  if ("error" in ref) return { content: ref.error, costUsd: 0 };
+  const events = await listEvents(ctx.events, ctx);
+  if (typeof events === "string") return { content: events, costUsd: 0 };
+  const found = events.find((e) => e.id === ref.id);
+  if (!found) {
+    return {
+      content:
+        "There is no event with that id that the person asking can see: it may be over or canceled, or in a channel they can't see. Check list_events.",
+      costUsd: 0,
+    };
+  }
+  if (found.cantChange) {
+    return {
+      content: `You can't change or delete this event for this request: ${found.cantChange} Tell them briefly, and don't say it was done.`,
+      costUsd: 0,
+    };
+  }
+  return { found, others: events.filter((e) => e !== found), events: ctx.events };
+}
+
+/**
+ * Where an edit may move the event: refused out of a channel not every member can see (that could show the event to
+ * more people), and into a voice channel only when both may change the event there. Gives the edit with the channel's
+ * own name, or what the model is told instead; the refusal is the same whether such a channel exists or not.
+ */
+function placeEdit(ev: ServerEvent, edit: EventEdit, events: ServerEvents): EventEdit | string {
+  if (!edit.where) return edit;
+  if (!ev.everyoneSees) {
+    return "It's in a voice channel not every member can see, and moving it could show it to more people, so you can't move it; the person asking can move it in Discord.";
+  }
+  if (edit.where.kind === "location") return edit;
+  const target = pickVoiceChannel(edit.where.channel, events.channelsFor(ev));
+  if (!target) {
+    return `There's no voice channel called "${oneLine(edit.where.channel)}" that you and the person asking could both move this event to.`;
+  }
+  return { ...edit, where: { kind: "voice", channel: target.name } };
+}
+
+/** What edit_event tells the model the change will be, with the times it comes to whenever they change. */
+function describeEdit(ev: ServerEvent, edit: EventEdit, timeZone: string): string {
+  const external = edit.where ? edit.where.kind === "location" : ev.where.kind === "location";
+  const { start, end } = editedTimes(ev, edit, external);
+  const timesChange = start.getTime() !== ev.start.getTime() || end?.getTime() !== ev.end?.getTime();
+  const at = (d: Date) => `${formatLocalNow(d, timeZone)} ${timeZone}`;
+  const changes = [
+    edit.name ? `is renamed "${edit.name}"` : null,
+    edit.where?.kind === "voice" ? `moves to the voice channel ${edit.where.channel}` : null,
+    edit.where?.kind === "location" ? `moves to ${edit.where.text}` : null,
+    timesChange ? `starts ${at(start)}${end ? ` and ends ${at(end)}` : ""}` : null,
+    edit.description ? "gets the new description" : null,
+  ].filter(Boolean);
+  const readers = edit.start
+    ? ` To show the new time in each reader's own zone, write <t:${Math.floor(start.getTime() / 1000)}:F>.`
+    : "";
+  return `Change ready: "${oneLine(ev.name)}" ${changes.join(", ")}. It will be made right after your reply, and the event's link posted.${readers} Keep the reply to a short line saying what changes.`;
+}
 
 /**
  * The tools gork has. This array is the one place a tool exists: its definition, its code, and the list the
@@ -193,13 +299,21 @@ const allTools = (cfg: Config): Tool[] => [
   {
     def: fn(
       "web_fetch",
-      `Read a public web page as text. Use it when search snippets don't settle the question, or when someone shares a link and asks about it. It opens only links from ${linkSources(cfg)}, exactly as given, and links printed on a page you read that stay on that page's site. Returns the page as markdown, truncated if very long. Each read takes about ${Math.floor(READ_GAP_MS / 1000)} seconds, so read only the 1-3 pages you actually need. Not for YouTube links (use youtube_transcript).`,
+      `Read a public web page as text. Use it when search snippets don't settle the question, or when someone shares a link and asks about it. It opens only links from ${linkSources(cfg)}, exactly as given, and links printed on a page you read that stay on that page's site. Returns the page as markdown, truncated if very long. Each read takes about ${Math.floor(READ_GAP_MS / 1000)} seconds, so read only the 1-3 pages you actually need. Not for YouTube links (use youtube_transcript) or Discord event links (use list_events).`,
       { url: { type: "string", description: "Full http(s) URL of the page." } },
       ["url"],
     ),
     run: async (args, ctx) => {
       const url = asString(args.url, MAX_URL);
       if (!url) return { content: 'Invalid arguments for web_fetch: send {"url": "https://..."}.', costUsd: 0 };
+      // Discord answers an event link with its login page, which the model took for the event.
+      if (parseEventLink(url)) {
+        return {
+          content:
+            "That's a Discord event link, which web_fetch can't open (Discord shows a login page). Use list_events to see the server's events; edit_event and delete_event take the link as it is.",
+          costUsd: 0,
+        };
+      }
       if (!ctx.links.has(url)) return { content: linkRefused(cfg), costUsd: 0 };
       const content = await fetchPage(cfg, url, ctx.state.readPacer, ctx.fetch);
       // Links printed on the page that stay on its site may be opened next (see sameSiteLinks).
@@ -315,7 +429,7 @@ const allTools = (cfg: Config): Tool[] => [
   {
     def: fn(
       "create_event",
-      `Create a scheduled event on this Discord server (it shows in the server's Events list). Use it when someone asks you to schedule, set up or create an event, a raid night, a movie night, a meetup. If they haven't said what it is and when, ask them first instead of making something up; if they then tell you to go ahead anyway, make it. start and end are local times in the server's time zone (${cfg.timeZone}), written ${LOCAL_FORMAT} with no Z or offset: work them out from the current date and time in your instructions, never use a date that has passed, start at least ${MIN_LEAD_MINUTES} minutes from now, and start within ${MAX_DAYS_AHEAD} days. Give location (text) for an event anywhere but voice chat, or voice_channel (a voice channel's name) to hold it in voice; give at most one. With neither, the event is listed at "${DEFAULT_LOCATION}". An event with a location ends ${DEFAULT_EVENT_HOURS} hours after it starts unless you give end. The event is created right after your reply and its link is posted, so keep the reply to a short line. One event per reply.`,
+      `Create a scheduled event on this Discord server (it shows in the server's Events list). Use it when someone asks you to schedule, set up or create an event, a raid night, a movie night, a meetup. If it may already exist, check list_events first. If they haven't said what it is and when, ask them first instead of making something up; if they then tell you to go ahead anyway, make it. start and end are local times in the server's time zone (${cfg.timeZone}), written ${LOCAL_FORMAT} with no Z or offset: work them out from the current date and time in your instructions, never use a date that has passed, start at least ${MIN_LEAD_MINUTES} minutes from now, and start within ${MAX_DAYS_AHEAD} days. Give location (text) for an event anywhere but voice chat, or voice_channel (a voice channel's name) to hold it in voice; give at most one. With neither, the event is listed at "${DEFAULT_LOCATION}". An event with a location ends ${DEFAULT_EVENT_HOURS} hours after it starts unless you give end. The event is created right after your reply and its link is posted, so keep the reply to a short line. One event per reply.`,
       {
         name: { type: "string", description: `The event's name, up to ${MAX_NAME} characters.` },
         start: { type: "string", description: `When it starts, ${LOCAL_FORMAT}, in ${cfg.timeZone}.` },
@@ -340,11 +454,10 @@ const allTools = (cfg: Config): Tool[] => [
         return {
           content:
             ctx.refusals.event ??
-            "You can't create events for this request: only when the person asking has the Create Events permission on this server (and so do you) and asks for an event in their own message. Tell them briefly that you can't, and don't say an event was created or scheduled.",
+            "You can't create events for this request: only when the person asking has the Create Events permission on this server, and so do you. Tell them briefly that you can't, and don't say an event was created or scheduled.",
           costUsd: 0,
         };
-      if (ctx.tally.events >= 1)
-        return { content: "Already made one event for this reply; that's the limit.", costUsd: 0 };
+      if (ctx.tally.events >= 1) return { content: ONE_EVENT_CHANGE, costUsd: 0 };
       const now = new Date(ctx.now());
       const event = parseEvent(args, { now, timeZone: cfg.timeZone });
       if (typeof event === "string") return { content: `Invalid arguments for create_event: ${event}`, costUsd: 0 };
@@ -354,6 +467,85 @@ const allTools = (cfg: Config): Tool[] => [
         content: `Event ready: "${event.name}" starts ${at(event.start)}${end ? ` and ends ${at(end)}` : ""}. It will be created right after your reply and its link posted. To show the time in each reader's own zone, write <t:${Math.floor(event.start.getTime() / 1000)}:F>. Keep the reply to a short line.`,
         costUsd: 0,
         event,
+      };
+    },
+  },
+  {
+    def: fn(
+      "list_events",
+      `See the scheduled events on this Discord server that every member can see, soonest first, with each one's id and link and whether you may change or delete it. Use it when someone asks about events, and before you change or delete one or create one that may already exist. Shows the soonest ${MAX_LISTED_EVENTS}; give name to find one by part of its name. This, not web_fetch, is how you read a discord.com/events link.`,
+      { name: { type: "string", description: "Part of an event's name. Optional." } },
+      [],
+    ),
+    run: async (args, ctx) => {
+      if (!ctx.events) return { content: "You can't see the server's events for this request.", costUsd: 0 };
+      const events = await listEvents(ctx.events, ctx);
+      if (typeof events === "string") return { content: events, costUsd: 0 };
+      const name = typeof args.name === "string" ? oneLine(stripInvisible(args.name)) : "";
+      return { content: formatEventList(events, { timeZone: cfg.timeZone, name: name || undefined }), costUsd: 0 };
+    },
+  },
+  {
+    def: fn(
+      "edit_event",
+      `Change a scheduled event on this Discord server. Use it when someone asks you to move, reschedule, rename or update one. Name it by its id from list_events or its discord.com/events link, and give only what changes. start and end are local times in ${cfg.timeZone} (${LOCAL_FORMAT}, no Z or offset); moving the start moves the end too, unless you give end. Give location (text) or voice_channel (a voice channel's name), not both. The change is made right after your reply and the link posted, so keep the reply to a short line. One event change per reply, counting create_event and delete_event.`,
+      {
+        event: { type: "string", description: "Its id from list_events, or its discord.com/events link." },
+        name: { type: "string", description: `New name, up to ${MAX_NAME} characters.` },
+        start: { type: "string", description: `New start, ${LOCAL_FORMAT}.` },
+        end: { type: "string", description: `New end, ${LOCAL_FORMAT}.` },
+        location: { type: "string", description: `New place, up to ${MAX_LOCATION} characters.` },
+        voice_channel: { type: "string", description: "Voice channel to move it to." },
+        description: { type: "string", description: `New description, up to ${MAX_DESCRIPTION} characters.` },
+      },
+      ["event"],
+    ),
+    run: async (args, ctx) => {
+      const target = await eventToChange(args, ctx);
+      if (!("found" in target)) return target;
+      const parsed = parseEventEdit(args, { now: new Date(ctx.now()), timeZone: cfg.timeZone, event: target.found });
+      if (typeof parsed === "string") return { content: `Invalid arguments for edit_event: ${parsed}`, costUsd: 0 };
+      const edit = placeEdit(target.found, parsed, target.events);
+      if (typeof edit === "string") return { content: edit, costUsd: 0 };
+      return {
+        content: describeEdit(target.found, edit, cfg.timeZone),
+        costUsd: 0,
+        change: { kind: "edit", event: target.found, edit },
+      };
+    },
+  },
+  {
+    def: fn(
+      "delete_event",
+      "Delete a scheduled event on this Discord server, only when the person asking says to delete, cancel or remove it. Name it by its id from list_events or its discord.com/events link. It is deleted right after your reply and can't be brought back, so say which event goes and when it was. One event change per reply, counting create_event and edit_event.",
+      { event: { type: "string", description: "Its id from list_events, or its discord.com/events link." } },
+      ["event"],
+    ),
+    run: async (args, ctx) => {
+      const refused = (why: string) => ({
+        content: `You can't delete this event for this request: ${why} Tell them briefly, and don't say it was deleted.`,
+        costUsd: 0,
+      });
+      if (!asksToDelete(ctx.asked.text)) {
+        return refused("the person asking has to say delete, cancel or remove in their own message.");
+      }
+      const target = await eventToChange(args, ctx);
+      if (!("found" in target)) return target;
+      const ev = target.found;
+      if (ev.repeats) {
+        return refused(
+          "it repeats, and deleting it would delete every time it repeats. They can delete it, or cancel one time, in Discord.",
+        );
+      }
+      if (!namesEvent([ctx.asked.text, ctx.asked.replyTo], ev, target.others)) {
+        return refused(
+          "the person asking has to name the event in their message (a word of its name that no other event's name has, or its link), or reply to a message that does.",
+        );
+      }
+      return {
+        content: `Deletion ready: "${oneLine(ev.name)}" (${formatLocalNow(ev.start, cfg.timeZone)} ${cfg.timeZone}) will be deleted right after your reply, and a note saying so posted. It can't be brought back, so say in a short line which event goes and when it was.`,
+        costUsd: 0,
+        change: { kind: "delete", event: ev },
       };
     },
   },
@@ -460,6 +652,10 @@ export async function runTool(
     mayCreateEvents?: boolean;
     mayCreatePolls?: boolean;
     refusals?: { event?: string; poll?: string };
+    /** The server's events as the asker can see them; without them the event tools say they can't see any. */
+    events?: ServerEvents;
+    /** What the asker wrote and the message they replied to (see ToolContext); without it nothing is deleted. */
+    asked?: { text: string; replyTo: string | null };
     /** The video this request is about, if any; without one the model has no video_frames tool. */
     video?: VideoWatch;
     /** The images earlier in the chat the model may see, if any; without them it has no view_images tool. */
@@ -493,6 +689,8 @@ export async function runTool(
       log: deps.log,
       mayPingEveryone: deps.mayPingEveryone ?? false,
       mayCreateEvents: deps.mayCreateEvents ?? false,
+      events: deps.events ?? null,
+      asked: deps.asked ?? { text: "", replyTo: null },
       mayCreatePolls: deps.mayCreatePolls ?? false,
       refusals: deps.refusals ?? {},
       video: deps.video ?? null,

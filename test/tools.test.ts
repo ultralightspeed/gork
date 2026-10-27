@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EARLIER_IMAGES_PER_CALL, EARLIER_IMAGES_PER_REPLY, EarlierImages } from "../src/earlierimages.ts";
+import type { ServerEvent, ServerEvents } from "../src/event.ts";
 import { givenLinks, hidesPreviews, LinkSet } from "../src/links.ts";
 import { answer } from "../src/llm.ts";
 import { MAX_SEARCH_QUERY, webSearch } from "../src/search.ts";
@@ -810,5 +811,213 @@ describe("create_event tool", () => {
       expect(r.event).toBeUndefined();
       expect(r.content).toMatch(/can't create events/);
     }
+  });
+
+  it("tells the model to check list_events first when the event may already exist", () => {
+    const description = toolDefs(cfg).find((t) => t.function.name === "create_event")?.function.description;
+    expect(description).toContain("list_events");
+  });
+});
+
+describe("event tools: list_events, edit_event and delete_event", () => {
+  // Monday 2026-10-19, 12:00 UTC.
+  const now = () => Date.parse("2026-10-19T12:00:00Z");
+  const raid: ServerEvent = {
+    id: "100",
+    name: "Raid night",
+    start: new Date("2026-10-23T20:00:00Z"),
+    end: new Date("2026-10-23T22:00:00Z"),
+    where: { kind: "location", text: "Ironforge" },
+    description: "bring flasks",
+    live: false,
+    interested: 3,
+    madeBy: "gork",
+    repeats: false,
+    link: "https://discord.com/events/1/100",
+    everyoneSees: true,
+    cantChange: null,
+  };
+  const movie: ServerEvent = { ...raid, id: "101", name: "Movie night", start: new Date("2026-10-30T20:00:00Z") };
+  /** The server's events; Raid Voice is the one voice channel both the asker and gork may move one to. */
+  const board = (events: ServerEvent[] = [raid, movie]): ServerEvents => ({
+    guildId: "1",
+    list: async () => events,
+    channelsFor: () => [{ id: "10", name: "Raid Voice", stage: false }],
+  });
+  const asked = (text: string, replyTo: string | null = null) => ({ asked: { text, replyTo } });
+  const run = (name: string, args: unknown, deps: Parameters<typeof callTool>[3] = {}) =>
+    callTool(cfg, name, JSON.stringify(args), { events: board(), now, ...asked("delete raid night"), ...deps });
+
+  it("are offered to every request, and cost nothing", async () => {
+    const names = toolDefs(cfg).map((t) => t.function.name);
+    expect(names).toEqual(expect.arrayContaining(["list_events", "edit_event", "delete_event"]));
+    expect((await run("list_events", {})).costUsd).toBe(0);
+  });
+
+  it("list the events the asker can see, with what edit_event needs", async () => {
+    const r = await run("list_events", {});
+    expect(r.content).toContain('1. "Raid night" (id 100)');
+    expect(r.content).toContain('2. "Movie night" (id 101)');
+    expect(r.change).toBeUndefined();
+  });
+
+  it("find an event by part of its name, and say when none matches", async () => {
+    const r = await run("list_events", { name: "MOVIE" });
+    expect(r.content).toContain('"Movie night" (id 101)');
+    expect(r.content).not.toContain("Raid night");
+    expect((await run("list_events", { name: "karaoke" })).content).toMatch(/No event .* has "karaoke" in its name/);
+  });
+
+  it("list nothing about an event in a channel not every member can see, though it can still be changed", async () => {
+    const staff: ServerEvent = { ...raid, id: "102", name: "Staff meeting", everyoneSees: false };
+    const withStaff = board([raid, staff]);
+    const listed = await run("list_events", {}, { events: withStaff });
+    expect(listed.content).toBe((await run("list_events", {}, { events: board([raid]) })).content);
+    const found = await run("list_events", { name: "staff" }, { events: withStaff });
+    expect(found.content).toBe((await run("list_events", { name: "staff" }, { events: board([raid]) })).content);
+    const renamed = await run("edit_event", { event: "102", name: "Staff sync" }, { events: withStaff });
+    expect(renamed.change).toMatchObject({ kind: "edit", event: { id: "102" } });
+  });
+
+  it("say so when Discord doesn't give the events, or when there is no server", async () => {
+    const failing: ServerEvents = {
+      ...board(),
+      list: async () => {
+        throw new Error("503");
+      },
+    };
+    expect((await run("list_events", {}, { events: failing })).content).toMatch(/couldn't check/);
+    expect((await run("edit_event", { event: "100", name: "n" }, { events: failing })).change).toBeUndefined();
+    const nowhere = await callTool(cfg, "list_events", "{}");
+    expect(nowhere.content).toMatch(/can't see the server's events/);
+  });
+
+  it("edit_event returns the change for after the reply, saying what it will be", async () => {
+    const r = await run("edit_event", { event: "100", start: "2026-10-24T21:00" });
+    expect(r.change).toEqual({ kind: "edit", event: raid, edit: { start: new Date("2026-10-24T21:00:00Z") } });
+    expect(r.content).toContain("Saturday 2026-10-24 21:00");
+    expect(r.content).toContain("Saturday 2026-10-24 23:00"); // the end moves with the start
+    expect(r.content).toContain(`<t:${Date.parse("2026-10-24T21:00:00Z") / 1000}:F>`);
+    expect(r.content).toMatch(/right after your reply/);
+    expect(r.costUsd).toBe(0);
+  });
+
+  it("edit_event says what the times become whenever they change, even when only a move sets them", async () => {
+    const inVoice: ServerEvent = { ...raid, where: { kind: "voice", channel: "Raid Voice" }, end: null };
+    const r = await run("edit_event", { event: "100", location: "Orgrimmar" }, { events: board([inVoice]) });
+    expect(r.content).toContain("moves to Orgrimmar");
+    expect(r.content).toContain("ends Friday 2026-10-23 22:00"); // an event at a location must end
+    const renamed = await run("edit_event", { event: "100", name: "Raid night 2" });
+    expect(renamed.content).not.toContain("starts");
+  });
+
+  it("edit_event moves an event only to a voice channel both may use, and says nothing about the others", async () => {
+    const moved = await run("edit_event", { event: "100", voice_channel: "raid voice" });
+    expect(moved.change).toMatchObject({ edit: { where: { kind: "voice", channel: "Raid Voice" } } });
+    for (const channel of ["Staff Voice", "Lounge"]) {
+      const r = await run("edit_event", { event: "100", voice_channel: channel });
+      expect(r.change, channel).toBeUndefined();
+      expect(r.content).toBe(
+        `There's no voice channel called "${channel}" that you and the person asking could both move this event to.`,
+      );
+    }
+  });
+
+  it("edit_event won't move an event out of a channel not every member can see", async () => {
+    const staff: ServerEvent = { ...raid, where: { kind: "voice", channel: "Staff Voice" }, everyoneSees: false };
+    for (const args of [{ location: "Orgrimmar" }, { voice_channel: "Raid Voice" }]) {
+      const r = await run("edit_event", { event: "100", ...args }, { events: board([staff]) });
+      expect(r.change, JSON.stringify(args)).toBeUndefined();
+      expect(r.content).toMatch(/not every member can see/);
+    }
+  });
+
+  it("edit_event finds the event by its link, and says when the event isn't one the asker can see", async () => {
+    const byLink = await run("edit_event", { event: "https://discord.com/events/1/101", name: "Film night" });
+    expect(byLink.change).toMatchObject({ kind: "edit", event: { id: "101" }, edit: { name: "Film night" } });
+    const elsewhere = await run("edit_event", { event: "https://discord.com/events/2/101", name: "n" });
+    expect(elsewhere.content).toMatch(/another server/);
+    const unknown = await run("edit_event", { event: "999", name: "n" });
+    expect(unknown.content).toMatch(/no event with that id/i);
+    expect(unknown.change).toBeUndefined();
+  });
+
+  it("edit_event and delete_event pass on why gork can't change the event", async () => {
+    const locked = board([{ ...raid, cantChange: "someone else made it." }]);
+    for (const tool of ["edit_event", "delete_event"]) {
+      const r = await run(tool, { event: "100", name: "n" }, { events: locked });
+      expect(r.change, tool).toBeUndefined();
+      expect(r.content).toBe(
+        "You can't change or delete this event for this request: someone else made it. Tell them briefly, and don't say it was done.",
+      );
+    }
+  });
+
+  it("edit_event passes validation errors back to the model", async () => {
+    const r = await run("edit_event", { event: "100" });
+    expect(r.change).toBeUndefined();
+    expect(r.content).toMatch(/Invalid arguments for edit_event: Give at least one thing to change/);
+  });
+
+  it("allow one event change per reply, counting a created event", async () => {
+    const tally = { images: 0, polls: 0, events: 1, searchesRun: 0, fallbackSearches: 0 };
+    for (const [tool, args] of [
+      ["edit_event", { event: "100", name: "n" }],
+      ["delete_event", { event: "100" }],
+      ["create_event", { name: "n", start: "2026-10-23T20:00" }],
+    ] as const) {
+      const r = await run(tool, args, { tally, mayCreateEvents: true });
+      expect(r.change ?? r.event, tool).toBeUndefined();
+      expect(r.content, tool).toMatch(/one event change per reply/i);
+    }
+  });
+
+  it("delete_event deletes only when the asker's own message says delete, cancel or remove", async () => {
+    const refused = await run("delete_event", { event: "100" }, asked("what events are there? raid night?"));
+    expect(refused.change).toBeUndefined();
+    expect(refused.content).toMatch(/has to say delete, cancel or remove/);
+    const r = await run("delete_event", { event: "100" });
+    expect(r.change).toEqual({ kind: "delete", event: raid });
+    expect(r.content).toContain('"Raid night"');
+    expect(r.content).toMatch(/right after your reply/);
+  });
+
+  it("delete_event deletes only an event the asker named, in their message or the one they replied to", async () => {
+    const unnamed = await run("delete_event", { event: "100" }, asked("delete it"));
+    expect(unnamed.change).toBeUndefined();
+    expect(unnamed.content).toMatch(/has to name the event/);
+    const otherOne = await run("delete_event", { event: "100" }, asked("cancel movie night"));
+    expect(otherOne.change).toBeUndefined();
+    const byReply = await run(
+      "delete_event",
+      { event: "100" },
+      asked("delete this", "https://discord.com/events/1/100"),
+    );
+    expect(byReply.change).toMatchObject({ kind: "delete", event: { id: "100" } });
+  });
+
+  it("delete_event won't delete a repeating event, which would delete every time it repeats", async () => {
+    const r = await run("delete_event", { event: "100" }, { events: board([{ ...raid, repeats: true }]) });
+    expect(r.change).toBeUndefined();
+    expect(r.content).toMatch(/every time it repeats/);
+  });
+
+  it("put names members wrote on one line in what they tell the model", async () => {
+    const twoLines = board([{ ...raid, name: "Raid\nnight" }]);
+    for (const [tool, args] of [
+      ["edit_event", { event: "100", description: "bring food" }],
+      ["delete_event", { event: "100" }],
+    ] as const) {
+      const r = await run(tool, args, { events: twoLines });
+      expect(r.content, tool).toContain('"Raid night"');
+    }
+  });
+
+  it("web_fetch doesn't open a Discord event link, and points to the event tools instead", async () => {
+    const { f, calls } = fake(() => json({ success: true, result: "Log in to Discord" }));
+    const link = "https://discord.com/events/1/100";
+    const r = await callTool(cfg, "web_fetch", JSON.stringify({ url: link }), { fetch: f, links: new LinkSet([link]) });
+    expect(calls).toHaveLength(0);
+    expect(r.content).toMatch(/list_events/);
   });
 });

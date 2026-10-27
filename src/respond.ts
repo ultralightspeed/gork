@@ -15,7 +15,15 @@ import {
 } from "./context.ts";
 import type { EarlierImages } from "./earlierimages.ts";
 import { describeError } from "./errors.ts";
-import { eventScreenText, type ScheduledEvent } from "./event.ts";
+import {
+  deletedNote,
+  type EventChange,
+  type EventPlace,
+  eventEditScreenText,
+  eventScreenText,
+  type ScheduledEvent,
+  type ServerEvents,
+} from "./event.ts";
 import type { GuardVerdict, ScreenVerdict } from "./guard.ts";
 import { imageDataUrl } from "./images.ts";
 import type { Limits } from "./limits.ts";
@@ -48,6 +56,10 @@ export type Replies = {
   noEvent: string;
   /** Posted when Discord refused to create the event. */
   eventFailed: string;
+  /** Posted when the event couldn't be changed: Discord refused, or the event or the permissions changed meanwhile. */
+  eventChangeFailed: string;
+  /** Posted when the event couldn't be deleted, for the same reasons. */
+  eventDeleteFailed: string;
 };
 
 /** One @mention, already translated out of Discord's types by the adapter. */
@@ -70,12 +82,19 @@ export type RespondRequest = {
   can: { send: boolean; attach: boolean; poll: boolean };
   /** MENTIONS allows @everyone, the asker has Mention Everyone, and their own message asks for it. */
   mayPingEveryone: boolean;
-  /** The asker and the bot both have Create Events on this server, and the asker's own message asks for an event. */
+  /** The asker and the bot both have Create Events on this server. */
   mayCreateEvents: boolean;
-  /** The asker and the bot both have Send Polls in this channel, and the asker's own message asks for a poll. */
+  /** The asker and the bot both have Send Polls in this channel. */
   mayCreatePolls: boolean;
   /** When an event or poll may not be made, what the model is told instead (the one reason that applies). */
   refusals?: { event?: string; poll?: string };
+  /** The server's events as the asker can see them, for the event tools; null outside a server. */
+  events: ServerEvents | null;
+  /**
+   * The asker's own words, without what they forwarded, and the text of the message they replied to: deleting an
+   * event needs a delete word in the first and the event named in either.
+   */
+  asked: { text: string; replyTo: string | null };
   history: () => Promise<Msg[]>;
   /** Called once all gates pass and real work starts (the adapter starts typing). */
   onWorking?: () => void;
@@ -121,6 +140,8 @@ export type RespondDeps = {
       mayCreateEvents: boolean;
       mayCreatePolls: boolean;
       refusals?: { event?: string; poll?: string };
+      events: ServerEvents | null;
+      asked: { text: string; replyTo: string | null };
       video: VideoWatch | null;
       earlierImages: EarlierImages | null;
       links: LinkSet;
@@ -128,16 +149,27 @@ export type RespondDeps = {
   ) => Promise<LlmResult>;
 };
 
-/** What to post: text, plus any generated images, poll and event, and whether the model asked to ping @everyone. */
+/**
+ * What to post: text, plus any generated images, poll, new event and change to an event (made after the reply), and
+ * whether the model asked to ping @everyone.
+ */
 type Outcome = {
   text: string;
   files: Attachment[];
   poll: Poll | null;
   event: ScheduledEvent | null;
+  change: EventChange | null;
   pingEveryone: boolean;
 };
 
-const say = (text: string): Outcome => ({ text, files: [], poll: null, event: null, pingEveryone: false });
+const say = (text: string): Outcome => ({
+  text,
+  files: [],
+  poll: null,
+  event: null,
+  change: null,
+  pingEveryone: false,
+});
 
 /**
  * Decides how to answer one @mention: limits, budget, safety screens, the model, and what may be posted.
@@ -258,6 +290,8 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
       mayCreateEvents: req.mayCreateEvents,
       mayCreatePolls: req.mayCreatePolls,
       refusals: req.refusals,
+      events: req.events,
+      asked: req.asked,
       video: look,
       earlierImages: earlier,
       links,
@@ -285,10 +319,15 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   const answerText = stripInvisible(result.text);
   let poll = result.poll && visiblePoll(result.poll);
   let event = result.event && visibleEvent(result.event);
+  const change = result.change && visibleChange(result.change);
   const pollText = poll ? `\n\nPoll: ${poll.question}\nOptions: ${poll.answers.join(" | ")}` : "";
+  // The note gork posts after a deletion is screened here too, so everything it posts has passed the screen.
+  const changeText =
+    change?.kind === "edit" ? eventEditScreenText(change.edit) : change ? `\n\n${deletedNote(change.event)}` : "";
+  const eventText = event ? eventScreenText(event) : changeText;
   let post: GuardVerdict;
   try {
-    post = await deps.screenReply(question.content, answerText + pollText + (event ? eventScreenText(event) : ""));
+    post = await deps.screenReply(question.content, answerText + pollText + eventText);
   } catch (err) {
     // Fail closed: nothing the model produced goes out when the reply screen is down.
     logGuardFailure(log, err);
@@ -320,9 +359,11 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   }
   const overview = video ? videoOverview(video.frames, room).length : 0;
   log(
-    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} search=${result.searches.primary}+${result.searches.fallback} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} earlier=${earlier?.shown ?? 0} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? 1 : 0} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
+    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} search=${result.searches.primary}+${result.searches.fallback} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} earlier=${earlier?.shown ?? 0} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? "create" : (change?.kind ?? 0)} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
   );
-  return { text, files, poll, event, pingEveryone: result.pingEveryone && req.mayPingEveryone };
+  // A change to an event isn't gated here: discord-event.ts checks the asker's and gork's permissions again, with the
+  // event read afresh, before it makes the change.
+  return { text, files, poll, event, change, pingEveryone: result.pingEveryone && req.mayPingEveryone };
 }
 
 /**
@@ -365,15 +406,29 @@ const visiblePoll = (p: Poll): Poll => ({
   answers: p.answers.map(stripInvisible),
 });
 
+const visiblePlace = (where: EventPlace): EventPlace =>
+  where.kind === "voice"
+    ? { kind: "voice", channel: stripInvisible(where.channel) }
+    : { kind: "location", text: stripInvisible(where.text) };
+
 const visibleEvent = (ev: ScheduledEvent): ScheduledEvent => ({
   ...ev,
   name: stripInvisible(ev.name),
   description: ev.description && stripInvisible(ev.description),
-  where:
-    ev.where.kind === "voice"
-      ? { kind: "voice", channel: stripInvisible(ev.where.channel) }
-      : { kind: "location", text: stripInvisible(ev.where.text) },
+  where: visiblePlace(ev.where),
 });
+
+const visibleChange = (change: EventChange): EventChange => {
+  if (change.kind === "delete") return change;
+  const { name, where, description } = change.edit;
+  const edit = {
+    ...change.edit,
+    ...(name ? { name: stripInvisible(name) } : {}),
+    ...(where ? { where: visiblePlace(where) } : {}),
+    ...(description ? { description: stripInvisible(description) } : {}),
+  };
+  return { ...change, edit };
+};
 
 function outOfBudget(req: RespondRequest, deps: RespondDeps): Outcome | null {
   const { budget, limits, replies, log } = deps;

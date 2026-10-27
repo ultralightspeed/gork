@@ -10,12 +10,14 @@ import {
   abilities,
   askerCanMentionEveryone,
   botRoleId,
+  eventAccess,
   eventRefusal,
   pingContext,
   pollRefusal,
   splitImageUrls,
 } from "./discord-access.ts";
-import { postEvent, postPoll, sendReply, startTyping } from "./discord-reply.ts";
+import { serverEvents } from "./discord-event.ts";
+import { postEvent, postEventChange, postPoll, sendReply, startTyping } from "./discord-reply.ts";
 import { distrustRoots, OLD_NODE_WARNING } from "./distrust.ts";
 import { EarlierImages } from "./earlierimages.ts";
 import { describeError, isFatalCloseCode, isFatalLoginError } from "./errors.ts";
@@ -130,7 +132,9 @@ async function main(): Promise<void> {
     screenRequest: (question, replyTo, media) => screenRequest(cfg, question, replyTo, media),
     screenReply: (question, text) => screenReply(cfg, question, text),
     screenImages: (images, context) => screenImages(cfg, images, context),
-    answer: (messages, { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, video, earlierImages, links }) => {
+    answer: (messages, opts) => {
+      const { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, events, asked } = opts;
+      const { video, earlierImages, links } = opts;
       return answer(cfg, messages, {
         reserve: (usd) => budget.tryReserve(usd),
         offer: { video: !!video, earlierImages: !!earlierImages },
@@ -145,6 +149,8 @@ async function main(): Promise<void> {
             mayCreateEvents,
             mayCreatePolls,
             refusals,
+            events: events ?? undefined,
+            asked,
             video: video ?? undefined,
             earlierImages: earlierImages ?? undefined,
             links,
@@ -157,7 +163,8 @@ async function main(): Promise<void> {
   async function handle(message: Message): Promise<void> {
     const selfId = client.user?.id;
     const roles = [botRoleId(message)].filter((r): r is string => !!r);
-    // The asker's own words without the mention of gork: what the @everyone check reads.
+    // The asker's own words without the mention of gork, and without anything they forwarded (the question's text has
+    // that too): what the @everyone and event-deletion checks read.
     const askerText = stripTrigger(message.content, selfId ?? "", roles);
     const question = toMsg(message, resolveNames(message, askerText), selfId);
     // Forwards also carry a reference, but their content is already in the snapshot; only follow real replies.
@@ -167,6 +174,7 @@ async function main(): Promise<void> {
     const can = abilities(message);
     const eventNo = eventRefusal(message);
     const pollNo = pollRefusal(can);
+    const access = eventAccess(message);
     let stopTyping = () => {};
     let seen: Message[] = [];
     try {
@@ -185,6 +193,8 @@ async function main(): Promise<void> {
           mayCreateEvents: eventNo === null,
           mayCreatePolls: pollNo === null,
           refusals: { event: eventNo ?? undefined, poll: pollNo ?? undefined },
+          events: message.guild && access ? serverEvents(message.guild, access) : null,
+          asked: { text: askerText, replyTo: ref?.content ?? null },
           history: async () => {
             const fetched = await message.channel.messages
               .fetch({ limit: cfg.limits.contextMessages, before: message.id })
@@ -201,7 +211,7 @@ async function main(): Promise<void> {
       if (!outcome) return;
       const others = ref ? [ref, ...seen] : seen;
       const pings = { botId: selfId, allowed: cfg.mentions, everyoneRequested: outcome.pingEveryone };
-      await sendReply(
+      const posted = await sendReply(
         message,
         {
           text: outcome.text,
@@ -213,7 +223,18 @@ async function main(): Promise<void> {
         log,
       );
       if (outcome.poll) await postPoll(message, outcome.poll, log);
-      if (outcome.event) await postEvent(message, outcome.event, respondDeps.replies.eventFailed, log);
+      const { replies } = respondDeps;
+      if (outcome.event) await postEvent(message, outcome.event, replies.eventFailed, log);
+      // A change to an event, which may not be undone, is made only once the reply announcing it is out.
+      if (outcome.change && !posted) log("event change skipped: the reply announcing it wasn't posted");
+      else if (outcome.change) {
+        await postEventChange(
+          message,
+          outcome.change,
+          { edit: replies.eventChangeFailed, delete: replies.eventDeleteFailed },
+          log,
+        );
+      }
     } finally {
       stopTyping();
     }

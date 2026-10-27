@@ -1,8 +1,10 @@
-// Posts gork's outcome to Discord: the reply text and files, the poll, the event link, and the typing indicator.
+// Posts gork's outcome to Discord: the reply text and files, the poll, the event link or change, and the typing
+// indicator.
 import { ChannelType, type Message, MessageFlags } from "discord.js";
-import { createGuildEvent } from "./discord-event.ts";
+import { eventAccess } from "./discord-access.ts";
+import { changeGuildEvent, createGuildEvent } from "./discord-event.ts";
 import { describeError } from "./errors.ts";
-import type { ScheduledEvent } from "./event.ts";
+import { deletedNote, type EventChange, type ScheduledEvent, type VoiceChannelRef } from "./event.ts";
 import { hidesPreviews, type LinkSet } from "./links.ts";
 import { type AllowedMentions, defuseEveryone, NO_PINGS, type Pinged } from "./mentions.ts";
 import { canHoldEvent } from "./permissions.ts";
@@ -30,12 +32,20 @@ type ReplyContent = {
   previews?: boolean;
 };
 
-/** Posts the reply in chunks, each replying to the one before. Logs a failed send instead of throwing. */
-export async function sendReply(message: Replyable, reply: ReplyContent, log: (line: string) => void): Promise<void> {
+/**
+ * Posts the reply in chunks, each replying to the one before. Logs a failed send instead of throwing. Returns whether
+ * the reply went out: its first message was posted.
+ */
+export async function sendReply(
+  message: Replyable,
+  reply: ReplyContent,
+  log: (line: string) => void,
+): Promise<boolean> {
   const flags = (content: string) =>
     reply.previews === false || hidesPreviews(content, reply.given)
       ? ({ flags: MessageFlags.SuppressEmbeds } as const)
       : {};
+  let posted = false;
   try {
     const chunks = splitMessage(reply.text);
     const first = reply.ping(chunks[0]);
@@ -45,6 +55,7 @@ export async function sendReply(message: Replyable, reply: ReplyContent, log: (l
       files: reply.files.map((f) => ({ attachment: f.data, name: f.name })),
       ...flags(first.text),
     });
+    posted = true;
     for (const c of chunks.slice(1)) {
       const content = defuseEveryone(c);
       last = await last.reply({ content, allowedMentions: NO_PINGS, ...flags(content) });
@@ -52,6 +63,7 @@ export async function sendReply(message: Replyable, reply: ReplyContent, log: (l
   } catch (err) {
     log(`send failed: ${describeError(err)}`);
   }
+  return posted;
 }
 
 export async function postPoll(message: Message, poll: Poll, log: (line: string) => void): Promise<boolean> {
@@ -61,6 +73,31 @@ export async function postPoll(message: Message, poll: Poll, log: (line: string)
   } catch (err) {
     log(`poll failed: ${describeError(err)}`);
     return false;
+  }
+}
+
+/** The voice and Stage channels both the asker and gork can hold a new event in, with each channel's overrides. */
+function holdableChannels(message: Message): VoiceChannelRef[] {
+  const me = message.guild?.members.me;
+  const asker = message.member;
+  return [...(message.guild?.channels.cache.values() ?? [])]
+    .filter(
+      (ch) =>
+        ch.isVoiceBased() &&
+        [me, asker].every(
+          (m) =>
+            !!m && canHoldEvent((perm) => !!ch.permissionsFor(m)?.has(perm), ch.type === ChannelType.GuildStageVoice),
+        ),
+    )
+    .map((ch) => ({ id: ch.id, name: ch.name, stage: ch.type === ChannelType.GuildStageVoice }));
+}
+
+/** Posts a short note after the reply; logs a failed send instead of throwing. */
+async function postNote(message: Message, content: string, log: (line: string) => void): Promise<void> {
+  try {
+    await message.reply({ content, allowedMentions: NO_PINGS });
+  } catch (err) {
+    log(`event reply failed: ${describeError(err)}`);
   }
 }
 
@@ -76,24 +113,36 @@ export async function postEvent(
 ): Promise<void> {
   const guild = message.guild;
   if (!guild) return;
-  const me = guild.members.me;
-  const asker = message.member;
-  const channels = [...guild.channels.cache.values()]
-    .filter(
-      (ch) =>
-        ch.isVoiceBased() &&
-        [me, asker].every(
-          (m) =>
-            !!m && canHoldEvent((perm) => !!ch.permissionsFor(m)?.has(perm), ch.type === ChannelType.GuildStageVoice),
-        ),
-    )
-    .map((ch) => ({ id: ch.id, name: ch.name, stage: ch.type === ChannelType.GuildStageVoice }));
-  const link = await createGuildEvent(guild, ev, channels, log, `Created by gork for ${message.author.username}`);
-  try {
-    await message.reply({ content: link ?? failed, allowedMentions: NO_PINGS });
-  } catch (err) {
-    log(`event reply failed: ${describeError(err)}`);
-  }
+  const link = await createGuildEvent(
+    guild,
+    ev,
+    holdableChannels(message),
+    log,
+    `Created by gork for ${message.author.username}`,
+  );
+  await postNote(message, link ?? failed, log);
+}
+
+/**
+ * Makes the edit or deletion the reply announced, then posts the event's link after an edit, or a note naming the
+ * event after a deletion; `failed.edit` or `failed.delete` when it couldn't be made.
+ */
+export async function postEventChange(
+  message: Message,
+  change: EventChange,
+  failed: { edit: string; delete: string },
+  log: (line: string) => void,
+): Promise<void> {
+  const guild = message.guild;
+  const access = eventAccess(message);
+  if (!guild || !access) return;
+  const asker = {
+    reason: `Changed by gork for ${message.author.username}`,
+    who: `${message.author.username}(${message.author.id})`,
+  };
+  const done = await changeGuildEvent(guild, access, change, log, asker);
+  const posted = change.kind === "edit" ? change.event.link : deletedNote(change.event);
+  await postNote(message, done ? posted : failed[change.kind], log);
 }
 
 /** Shows "gork is typing" until the returned function is called. */

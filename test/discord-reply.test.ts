@@ -92,4 +92,11 @@ describe("sendReply", () => {
     expect(sent).toHaveLength(1);
     expect(lines).toEqual(["send failed: Error: Missing Permissions"]);
   });
+
+  it("says whether the reply went out: its first message was posted, whatever became of later ones", async () => {
+    const short = { text: "hi", files: [], given: new LinkSet(), ping: pingAll };
+    expect(await sendReply(channel().root, short, () => {})).toBe(true);
+    expect(await sendReply(channel(0).root, short, () => {})).toBe(false);
+    expect(await sendReply(channel(1).root, { ...short, text: long }, () => {})).toBe(true);
+  });
 });

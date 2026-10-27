@@ -21,6 +21,8 @@
 #   reply.no_poll        Appended when a poll was made but polls can't be posted here.
 #   reply.no_event       Appended when an event was made but you or the bot can't create events here.
 #   reply.event_failed   Sent when Discord refused to create the event.
+#   reply.event_change_failed  Sent when Discord refused to change an event.
+#   reply.event_delete_failed  Sent when Discord refused to delete an event.
 #   Leave any reply.* key out to use the built-in wording. Keep each value on one line.
 #   Safety messages are not configurable here; the bot always handles them itself.
 #

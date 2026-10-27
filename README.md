@@ -39,7 +39,7 @@ Reply to any message with `@gork is this true?`, or just ask it something. It re
 - Reads YouTube transcripts from a video link. This uses an undocumented YouTube interface that can break at any time; when it does, gork says transcripts are unavailable and everything else keeps working.
 - Sees images, link previews and forwarded messages.
 - Generates images from a description.
-- Makes native Discord polls and events, in your time zone.
+- Makes native Discord polls and events in your time zone, and lists, changes or deletes events when asked.
 - Talks in one of five personalities, or one you write in the setup page.
 - Screens every request and reply for harmful content, and posts nothing if the screen is down.
 

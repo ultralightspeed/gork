@@ -127,7 +127,7 @@ describe("systemPrompt", () => {
     const s = systemPrompt(p, "2026-10-19", { timeZone: "America/New_York", now });
     expect(s).toContain("Monday 2026-10-19 14:05");
     expect(s).toContain("America/New_York");
-    expect(s).toContain("create_event");
+    expect(s).toContain("give create_event and edit_event times in that zone");
     // The UTC date line stays as it was, and with no TIMEZONE there is no local-time line.
     expect(s).toContain("Today is 2026-10-19 (UTC).");
     expect(systemPrompt(p, "2026-10-19")).not.toContain("time zone");

@@ -40,6 +40,8 @@ const replies: Replies = {
   noPoll: "(NO_POLL)",
   noEvent: "(NO_EVENT)",
   eventFailed: "(EVENT_FAILED)",
+  eventChangeFailed: "(EVENT_CHANGE_FAILED)",
+  eventDeleteFailed: "(EVENT_DELETE_FAILED)",
 };
 const msg = (content: string): Msg => ({
   authorName: "amy",
@@ -143,6 +145,8 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
     mayPingEveryone: false,
     mayCreateEvents: false,
     mayCreatePolls: false,
+    events: null,
+    asked: { text: "", replyTo: null },
     history: async () => [],
   };
   const outcome = await respond(req, deps);

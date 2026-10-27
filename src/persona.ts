@@ -36,6 +36,8 @@ export const NEUTRAL_REPLIES: Record<keyof PersonaReplies, string> = {
   noPoll: "(I made a poll but can't post polls in this channel.)",
   noEvent: "(I set up an event but you or I don't have permission to create events here.)",
   eventFailed: "(I tried to create the event, but Discord wouldn't let me.)",
+  eventChangeFailed: "(I tried to change the event, but Discord wouldn't let me.)",
+  eventDeleteFailed: "(I tried to delete the event, but Discord wouldn't let me.)",
 };
 
 // Front-matter keys (reply.<key>) for each reply.
@@ -51,6 +53,8 @@ const REPLY_KEYS: Record<string, keyof PersonaReplies> = {
   no_poll: "noPoll",
   no_event: "noEvent",
   event_failed: "eventFailed",
+  event_change_failed: "eventChangeFailed",
+  event_delete_failed: "eventDeleteFailed",
 };
 
 /** The names of the `reply.<key>` front-matter keys. */
@@ -170,7 +174,7 @@ export function systemPrompt(
   const { name } = persona;
   const quirk = quirkOn && persona.quirk ? `\n- For this reply: ${persona.quirk}` : "";
   const clock = timeZone
-    ? `\n- The server's time zone is ${timeZone}, and right now it is ${formatLocalNow(now, timeZone)} there. Work out "tomorrow" or "Friday 8pm" from that clock, and give create_event times in that zone.`
+    ? `\n- The server's time zone is ${timeZone}, and right now it is ${formatLocalNow(now, timeZone)} there. Work out "tomorrow" or "Friday 8pm" from that clock, and give create_event and edit_event times in that zone.`
     : "";
   return `${persona.body}
 

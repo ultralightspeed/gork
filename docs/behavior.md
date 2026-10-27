@@ -1,6 +1,6 @@
 # What gork does in your server
 
-gork screens what it reads and writes for harmful content. Besides writing a reply, it can ping people, create events, post polls and images, and show link previews. Each of these is limited by the permissions the person asking has. @everyone also needs the asker to say "everyone".
+gork screens what it reads and writes for harmful content. Besides writing a reply, it can ping people, create, change and delete events, post polls and images, and show link previews. Each of these is limited by the permissions the person asking has. @everyone also needs the asker to say "everyone", and deleting an event needs them to say delete, cancel or remove and name the event.
 
 ## Safety
 
@@ -8,7 +8,7 @@ gork screens every request and every reply before anything is posted.
 
 - The request is screened, along with the message it replies to, any images, and the frames and speech of any video.
 - An image posted earlier in the chat is screened when gork asks to see it, before gork is shown it.
-- The reply is screened, including any poll text and the name, place and description of any event. Every generated image is screened too, before it is posted.
+- The reply is screened, including any poll text, the name, place and description of an event it creates or changes, and the note naming an event it deletes. Every generated image is screened too, before it is posted.
 
 The screen is Cloudflare's Clef-Flash model. It looks for five kinds of content: violent crime, sex crimes, sexual content involving minors, weapons of mass harm, and self-harm. Change what it checks with `GUARD_BLOCK` and how strict it is with `GUARD_THRESHOLD`. The check for sexual content involving minors is always on, whatever `GUARD_BLOCK` says.
 
@@ -55,31 +55,59 @@ Ask gork to schedule something and it creates a native Discord event, then posts
 
 > @gork set up a raid this Friday at 8pm in Raid Voice
 
-The event shows in the server's Events list, visible to members of the server only. It is created right after gork's reply, and the link follows as a second message. One event per reply.
+It can also tell you what's coming up, and change or delete an event:
+
+> @gork what events do we have this week?
+>
+> @gork move the raid to Saturday, same time
+>
+> @gork cancel movie night
+
+A new event shows in the server's Events list, visible to members of the server only. gork creates, changes or deletes an event right after its reply is posted. Then it posts the event's link (after a new event or a change) or a note naming the deleted event, as a second message. A reply does one of these at most: one event created, changed or deleted.
 
 ### Who can ask
 
-- Any wording works, including "do it" after gork asks what event you want. If you don't say what it is and when, gork asks before making one.
-- There is no wording check. A web page could in principle talk gork into making an event, but only for someone who has Create Events, one per reply, screened, and visible and deletable in the Events list. That risk is accepted as low.
-- The person asking needs Create Events on the server (Administrator includes it). Manage Events alone is not enough.
-- gork needs the same permission. The invite link in [setup.md](setup.md#setting-up-by-hand) asks for Create Events and leaves out Manage Events, so gork can only change events it made itself. It never edits or deletes any.
-- To hold an event in a voice channel, the person asking and gork each need View Channel, Connect and Create Events in that channel. Channel permission overrides count.
-- A Stage channel needs more, because Discord asks for it: Create Events, View Channel, Manage Channels, Mute Members and Move Members. gork's invite does not include the last three, so unless you grant them to gork yourself, an event for a Stage channel is created with the channel's name as its location.
+gork does to an event only what the person asking could do themselves, and what gork's own permissions allow. Discord's rules decide both.
 
-If either of you lacks the permission, gork says so and creates nothing. It is told this before it answers, so it does not claim to have scheduled anything. `npm run doctor` warns when gork lacks Create Events.
+- **Creating** an event needs Create Events on the server, for the person asking and for gork (Administrator includes it). Manage Events alone is not enough.
+- **Changing or deleting** an event needs Manage Events, or Create Events for an event you made yourself. The person asking and gork each need it. Discord counts an event gork made as gork's, so changing one needs Manage Events, even for the person who asked for it.
+- gork's invite link in [setup.md](setup.md#setting-up-by-hand) asks for Create Events and leaves out Manage Events, so gork can change and delete only the events it made. To let it change other people's events, give its role Manage Events.
+- **Deleting** also needs two things in the asker's own message (not what they forwarded): one of the words delete, cancel or remove (in any form, in English), and the event named. A word of its name that no other event's name has counts, and so does its link. The name or link can also be in the message they reply to, such as the link gork posted when it made the event. The words are matched, not understood, so gork still has to read the request right; this keeps it from deleting an event nobody named.
+- A deleted event can't be brought back, and the list of who was interested goes with it. gork says in its reply which event it deletes and when it was, and posts a note naming it afterwards.
+- Creating and changing have no wording check. A web page or chat message could in principle talk gork into creating or changing an event, but only one the person asking may create or change, one per reply, screened, and named in gork's reply. That risk is accepted as low.
+
+If either of you lacks a permission, gork says which and does nothing. It is told this before it answers, so it does not claim to have done it. `npm run doctor` warns when gork lacks Create Events.
+
+### Which events gork lists
+
+gork's reply can be read by everyone in the channel, so it lists only events every member of the server can see: every event at a location, and those in voice and Stage channels that the @everyone role can view (and that you and gork can see). It never lists events in other channels, nor says whether there are any. You can still have one changed or deleted by giving its link. In a server where @everyone can't see the voice channels, only events at a location are listed.
+
+### Voice and Stage channels
+
+- To hold a new event in a voice channel, the person asking and gork each need View Channel, Connect and Create Events in that channel. Channel permission overrides count.
+- To change or delete an event in a voice channel, each of you needs View Channel and Connect there, along with the permissions above. To move an event into a voice channel, each of you needs all of those in the new channel.
+- gork never moves an event out of a channel that not every member can see, so a change never shows an event to more people. Move those in Discord.
+- A Stage channel needs more, because Discord asks for it: View Channel, Manage Channels, Mute Members and Move Members, and Create Events for a new event. gork's invite does not include the Stage permissions, so unless you grant them to gork yourself, an event for a Stage channel is created with the channel's name as its location, and gork can't change, delete or move an event into a Stage channel.
 
 ### Where and when
 
 - If you name a voice channel, the event is held in it. If you name a place (a town, a game location, a link), that text is the location. If you name neither, the location is `Discord`. Give one or the other.
-- gork looks a voice channel up by name. If there is no channel with that name, or you or gork can't see it or create events in it, the event is created with that name as its location instead. A Stage channel gets a Stage event only when both of you have the Stage permissions above.
+- gork looks a voice channel up by name. For a new event, if there is no channel with that name, or you or gork can't use it as above, that name becomes the event's location instead. A move doesn't do that: gork says there is no such channel it may move the event to, and changes nothing. A Stage channel gets a Stage event only when both of you have the Stage permissions above.
 - People say "Friday 8pm", so gork needs a clock to read it by. Set `TIMEZONE` in `.env` to an IANA name such as `America/New_York` (default `UTC`) and run `npm run up`. gork is told the current date, weekday and time in that zone on every reply.
 - When the clocks go forward, a time that gets skipped (2:30 in the morning, say) doesn't exist, so gork asks again. When they go back, a time that happens twice means the first one.
 - An event at a location ends 2 hours after it starts unless the asker gives an end time. An event in a voice channel has no end unless one is asked for.
+- Moving an event's start moves its end too, so it keeps its length, unless a new end is given.
 - The start must be at least 5 minutes away and within 365 days. The name is up to 100 characters, the location up to 100, the description up to 1,000.
+- gork can't change an event that is already under way, though it can delete one.
+- A repeating event's time and place belong to every time it repeats, so gork changes only its name and description, and doesn't delete it. It also refuses a link to one time of a repeating event. Do those in Discord, where you can also cancel just one time.
 
-The event's name, location, voice channel name and description are screened together with gork's reply. If the reply is blocked, no event is created. gork also sends Discord an audit-log reason ("Created by gork for" and the asker's username) with each event.
+### Screening and records
 
-Creating an event counts as one tool call toward `MAX_TOOL_CALLS`, and it costs nothing extra. If Discord refuses to create the event, gork posts a short note and the log has a line starting with `event failed`.
+The name, location, voice channel name and description of a new event are screened together with gork's reply, and so is any new text a change gives an event, and the note gork posts after deleting one. If the reply is blocked, nothing is created, changed or deleted. If the reply couldn't be posted, no event is changed or deleted.
+
+Just before it changes or deletes an event, gork reads the event from Discord again and checks your permissions and its own once more, as Discord last sent them. gork sends Discord an audit-log reason with each new event and each change: "Created by gork for" or "Changed by gork for", and the asker's username. Discord takes no reason with a deletion, so the server's audit log shows only that gork deleted the event. gork's own log has a line `event <id> deleted for <username>(<user id>)`.
+
+Each event tool call (create, list, change, delete) counts toward `MAX_TOOL_CALLS`, and none costs anything extra. If Discord refuses, gork posts a short note, and the log has a line starting with `event failed` (creating) or `event change` (changing or deleting).
 
 ## Polls
 

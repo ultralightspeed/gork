@@ -84,6 +84,8 @@ async function fullReply(env: Record<string, string>) {
       noPoll: "(NO_POLL)",
       noEvent: "(NO_EVENT)",
       eventFailed: "(EVENT_FAILED)",
+      eventChangeFailed: "(EVENT_CHANGE_FAILED)",
+      eventDeleteFailed: "(EVENT_DELETE_FAILED)",
     },
     botName: "gork",
     log: () => {},
@@ -121,6 +123,8 @@ async function fullReply(env: Record<string, string>) {
     mayPingEveryone: false,
     mayCreateEvents: false,
     mayCreatePolls: false,
+    events: null,
+    asked: { text: "", replyTo: null },
     history: async () => [],
   };
   const outcome = await respond(req, deps);

@@ -12,6 +12,8 @@ reply.no_attach: (made an image but I'm not allowed to upload files here)
 reply.no_poll: (made a poll but I'm not allowed to post polls here)
 reply.no_event: (made an event but I'm not allowed to create events here)
 reply.event_failed: (tried to create the event but Discord said no)
+reply.event_change_failed: (tried to change the event but Discord said no)
+reply.event_delete_failed: (tried to delete the event but Discord said no)
 ---
 You are gork, an AI in a Discord server.
 

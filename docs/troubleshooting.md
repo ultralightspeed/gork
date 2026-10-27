@@ -62,6 +62,18 @@ After fixing it, run `npm run up`.
 - If gork posts that it tried and Discord said no, look for `event failed` in the logs. It gives Discord's reason.
 - See [behavior.md](behavior.md#events).
 
+## gork won't change or delete an event
+
+- gork changes or deletes an event only when the person asking and gork could both do it themselves: Manage Events, or Create Events for an event of your own. Discord counts an event gork made as gork's, so changing one of those needs Manage Events, even for the person who asked for it. gork says which of you is missing what.
+- gork's invite doesn't ask for Manage Events, so it can change only the events it made. To let it change other people's events, give its role Manage Events (Server Settings, Roles).
+- To delete, say delete, cancel or remove in your message, and name the event: a word of its name that no other event's name has, or its link. Replying to gork's message with the event's link works too ("delete this").
+- gork can't change an event that is under way (it can still delete it). For a repeating event it changes only the name and description, and it doesn't delete one. Do the rest in Discord.
+- gork moves an event only into a voice channel both of you may change it in, and never out of a channel that not every member can see.
+- gork can't change, delete or move an event into a Stage channel unless its role has Manage Channels, Mute Members and Move Members there.
+- If gork doesn't list an event, it may be in a voice channel that not every member can see: gork never lists those, since anyone in the channel can read its reply. Give it the event's link instead.
+- If gork says it can't see an event at all, it isn't one the person asking can see: it is over or canceled, or in a voice channel they or gork can't see.
+- If gork posts that it tried and Discord said no, look for `event change` in the logs. It says why: Discord's reason, or that the event or the permissions changed before gork got to it.
+
 ## YouTube transcripts stop working
 
 gork reads transcripts through an undocumented YouTube interface. YouTube can change or block it at any time. When that happens gork says transcripts are unavailable right now, and it works again only after a fix to gork. Everything else keeps working.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ServerEvent } from "../src/event.ts";
 import {
   answer,
   cleanText,
@@ -332,6 +333,22 @@ describe("answer", () => {
     });
   });
 
+  const serverEvent: ServerEvent = {
+    id: "100",
+    name: "Raid",
+    start: new Date("2026-10-23T20:00:00Z"),
+    end: null,
+    where: { kind: "location", text: "Discord" },
+    description: null,
+    live: false,
+    interested: null,
+    madeBy: "gork",
+    repeats: false,
+    link: "https://discord.com/events/1/100",
+    everyoneSees: true,
+    cantChange: null,
+  };
+
   // Each reply may carry one generated image, one poll and one event: the first one a tool makes is kept, and the
   // next tool call is told it already exists so it can refuse.
   it.each([
@@ -373,6 +390,14 @@ describe("answer", () => {
         description: null,
       },
     },
+    {
+      what: "event change",
+      tool: "delete_event",
+      made: { change: { kind: "delete" as const, event: serverEvent } },
+      count: (t: ReplyTally) => t.events,
+      collected: (r: LlmResult) => r.change,
+      expected: { kind: "delete", event: serverEvent },
+    },
   ])(
     "collects the $what a tool made and tells the next call one exists",
     async ({ tool, made, count, collected, expected }) => {
@@ -394,6 +419,30 @@ describe("answer", () => {
       expect(collected(r)).toEqual(expected);
     },
   );
+
+  it("counts an event change and a created event together, and keeps only the first even if a tool made both", async () => {
+    const { f } = scripted([
+      completion(toolCall("c1", "edit_event", "{}")),
+      completion(toolCall("c2", "create_event", "{}")),
+      completion({ content: "done" }),
+    ]);
+    const seen: number[] = [];
+    const created = { name: "Raid", start: new Date("2026-10-23T20:00:00Z"), end: null, description: null };
+    const r = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async (_n, _a, tally) => {
+        seen.push(tally.events);
+        // The second tool ignores the count it was given; the reply still carries only the first event change.
+        return seen.length === 1
+          ? { content: "ready", costUsd: 0, change: { kind: "edit", event: serverEvent, edit: { name: "Raid 2" } } }
+          : { content: "made anyway", costUsd: 0, event: { ...created, where: { kind: "location", text: "Discord" } } };
+      },
+      reserve: yes,
+    });
+    expect(seen).toEqual([0, 1]);
+    expect(r.change).toEqual({ kind: "edit", event: serverEvent, edit: { name: "Raid 2" } });
+    expect(r.event).toBeNull();
+  });
 
   it("reports whether a tool asked for an @everyone ping", async () => {
     const { f } = scripted([

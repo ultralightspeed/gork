@@ -1,8 +1,9 @@
 // Reads from a Discord message what the asker and gork may do and who may be tagged, and picks the images to attach.
-import type { GuildMember, Message } from "discord.js";
+import { ChannelType, type GuildMember, type Message } from "discord.js";
 import type { Msg } from "./context.ts";
+import type { VoiceChannelRef } from "./event.ts";
 import { buildPingContext, type MentionKind, type PingContext } from "./mentions.ts";
-import { canCreateEvents, channelAbilities, type Permission } from "./permissions.ts";
+import { canCreateEvents, channelAbilities, type EventChangeBlock, type Permission } from "./permissions.ts";
 
 export const botRoleId = (m: Message): string | null => m.guild?.members.me?.roles.botRole?.id ?? null;
 
@@ -37,6 +38,73 @@ export function eventRefusal(message: Message): string | null {
       "create an event",
       "you don't have the Create Events permission on this server; a server admin can give your role Create Events.",
     );
+  return null;
+}
+
+/** The asker's and gork's permissions as the event tools read them, so the event code can be tested without Discord. */
+export type EventAccess = {
+  askerId: string;
+  botId: string;
+  /**
+   * Whether the asker, gork or every member (the @everyone role) has a permission in a channel (its overrides
+   * count), or on the server for null.
+   */
+  has: (who: "asker" | "bot" | "everyone", permission: Permission, channelId: string | null) => boolean;
+  /** The server's voice and Stage channels. */
+  voiceChannels: () => VoiceChannelRef[];
+};
+
+/** The event permissions of the message's author and gork; null outside a server. */
+export function eventAccess(message: Message): EventAccess | null {
+  const guild = message.guild;
+  const asker = message.member;
+  const me = guild?.members.me;
+  if (!guild || !asker || !me) return null;
+  return {
+    askerId: asker.id,
+    botId: me.id,
+    has: (who, permission, channelId) => {
+      const holder = who === "asker" ? asker : who === "bot" ? me : guild.roles.everyone;
+      if (channelId === null) return holder.permissions.has(permission);
+      return !!guild.channels.cache.get(channelId)?.permissionsFor(holder)?.has(permission);
+    },
+    voiceChannels: () =>
+      [...guild.channels.cache.values()].flatMap((ch) =>
+        ch.isVoiceBased() ? [{ id: ch.id, name: ch.name, stage: ch.type === ChannelType.GuildStageVoice }] : [],
+      ),
+  };
+}
+
+const NO_STAGE = "Manage Channels, Mute Members and Move Members";
+
+/**
+ * Why gork can't change or delete an event for this asker, naming the first thing in the way, or null when nothing
+ * is. `asker` and `bot` are what eventChangeBlock found for each; the text is told to the model, so gork is "you".
+ */
+export function eventChangeWhyNot(
+  asker: EventChangeBlock,
+  bot: EventChangeBlock,
+  { madeBy, stage }: { madeBy: "gork" | "asker" | "other"; stage: boolean },
+): string | null {
+  if (asker === "manage") {
+    const whose = madeBy === "gork" ? "you made it, and Discord counts it as yours" : "someone else made it";
+    return `${whose}, so changing it needs the Manage Events permission, which the person asking doesn't have.`;
+  }
+  if (asker === "create") return "the person asking doesn't have the Create Events or Manage Events permission.";
+  if (asker === "channel") {
+    return stage
+      ? `it's in a Stage channel, and the person asking doesn't have ${NO_STAGE} there.`
+      : "it's in a voice channel the person asking can't connect to.";
+  }
+  if (bot === "manage") return "you can change only events you made; a server admin can give your role Manage Events.";
+  if (bot === "create") {
+    return "you don't have the Create Events permission on this server; a server admin can give your role Create Events.";
+  }
+  if (bot === "channel") {
+    return stage
+      ? `it's in a Stage channel, and you don't have ${NO_STAGE} there; a server admin can give your role them.`
+      : "it's in a voice channel you can't connect to.";
+  }
   return null;
 }
 

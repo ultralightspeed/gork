@@ -33,7 +33,7 @@ If you pasted a secret anywhere public, treat it as leaked. Reset or delete it r
 
 - Prompt injection that gets past the safety screen: text in a message, a replied-to message, an image or a web page that makes gork post content the screen should block, or makes it follow instructions from untrusted text.
 - Token exposure: anything that prints, logs, sends or stores a Discord or Cloudflare secret where it should not be. This includes the admin token entering the container, or a token being sent to a host that is not Cloudflare or the model provider you chose.
-- Unwanted pings or actions: any way to make gork ping people, roles, `@everyone` or `@here`, or create an event, poll or image, when the `MENTIONS` setting, the asker's own request or the asker's permissions should have stopped it.
+- Unwanted pings or actions: any way to make gork ping people, roles, `@everyone` or `@here`, create an event, poll or image, or change or delete an event, when the `MENTIONS` setting, the asker's own request or the asker's permissions should have stopped it.
 - Getting around the cooldown, the strike mute, the daily budget or the tool limits in a way that costs the person running gork money or harms a server.
 - Making gork fetch private, local or internal addresses, or read files it should not.
 - A crafted video file that makes ffmpeg use too much memory or time, read something other than Discord's CDN, or slip past the safety screen.

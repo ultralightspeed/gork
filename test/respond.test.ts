@@ -6,7 +6,7 @@ import { Budget } from "../src/budget.ts";
 import { FreeAllowanceError } from "../src/cf.ts";
 import { type ChatMessage, MAX_IMAGES_PER_REQUEST, type Msg } from "../src/context.ts";
 import { EarlierImages } from "../src/earlierimages.ts";
-import type { ScheduledEvent } from "../src/event.ts";
+import type { EventChange, ScheduledEvent, ServerEvent, ServerEvents } from "../src/event.ts";
 import type { GuardVerdict, ScreenVerdict } from "../src/guard.ts";
 import { GUARD_CATEGORIES, screenRequest } from "../src/guard.ts";
 import { Limits } from "../src/limits.ts";
@@ -34,6 +34,8 @@ const replies: Replies = {
   noPoll: "(NO_POLL)",
   noEvent: "(NO_EVENT)",
   eventFailed: "(EVENT_FAILED)",
+  eventChangeFailed: "(EVENT_CHANGE_FAILED)",
+  eventDeleteFailed: "(EVENT_DELETE_FAILED)",
 };
 
 const msg = (content: string, authorName = "amy"): Msg => ({
@@ -63,6 +65,19 @@ const event: ScheduledEvent = {
   where: { kind: "location", text: "Ironforge" },
   description: "bring flasks",
 };
+/** The same event once it is on the server, to change or delete. */
+const onServer: ServerEvent = {
+  ...event,
+  id: "100",
+  live: false,
+  interested: 3,
+  madeBy: "gork",
+  repeats: false,
+  link: "https://discord.com/events/1/100",
+  everyoneSees: true,
+  cantChange: null,
+};
+const rename: EventChange = { kind: "edit", event: onServer, edit: { name: "Raid night 2" } };
 const image = { name: "image-1.jpg", data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]), prompt: "an orc accountant" };
 const CLIP_URL = "https://cdn.discordapp.com/a/clip.mp4";
 const watched = (over: Partial<VideoResult> = {}): VideoResult => ({
@@ -89,12 +104,13 @@ const answered = (over: Partial<LlmResult> = {}): LlmResult => ({
   attachments: [],
   poll: null,
   event: null,
+  change: null,
   pingEveryone: false,
   searches: { primary: 0, fallback: 0 },
   ...over,
 });
 /** What a reply carries when nothing generated goes out. */
-const bare = (text: string) => ({ text, files: [], poll: null, event: null, pingEveryone: false });
+const bare = (text: string) => ({ text, files: [], poll: null, event: null, change: null, pingEveryone: false });
 
 const ledgerDirs: string[] = [];
 afterAll(() => {
@@ -180,6 +196,8 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     mayPingEveryone: false,
     mayCreateEvents: true,
     mayCreatePolls: true,
+    events: null,
+    asked: { text: "what is the capital of australia", replyTo: null },
     history: async () => {
       calls.history++;
       return [msg("earlier message", "bob")];
@@ -487,7 +505,104 @@ describe("respond: the answer and the reply screen", () => {
 
   it("returns generated images, polls and events when the channel and the asker allow them", async () => {
     const { req, deps } = setup({ deps: { answer: async () => answered({ attachments: [image], poll, event }) } });
-    expect(await respond(req, deps)).toEqual({ text: "the answer", files: [image], poll, event, pingEveryone: false });
+    expect(await respond(req, deps)).toEqual({
+      text: "the answer",
+      files: [image],
+      poll,
+      event,
+      change: null,
+      pingEveryone: false,
+    });
+  });
+
+  describe("event changes", () => {
+    it("screens an edit's new text along with the reply, then returns the edit", async () => {
+      let screened = "";
+      const moved: EventChange = {
+        ...rename,
+        edit: { name: "Raid night 2", where: { kind: "voice", channel: "Raid Voice" }, description: "bring food" },
+      };
+      const { req, deps } = setup({
+        deps: {
+          answer: async () => answered({ change: moved }),
+          screenReply: async (_q, reply) => {
+            screened = reply;
+            return clean;
+          },
+        },
+      });
+      expect(await respond(req, deps)).toMatchObject({ change: moved });
+      expect(screened).toBe("the answer\n\nEvent: Raid night 2\nWhere: Raid Voice\nDetails: bring food");
+    });
+
+    it("returns a deletion, screening the note gork posts about it along with the reply", async () => {
+      const remove: EventChange = { kind: "delete", event: onServer };
+      let screened = "";
+      const { req, deps } = setup({
+        deps: {
+          answer: async () => answered({ change: remove }),
+          screenReply: async (_q, reply) => {
+            screened = reply;
+            return clean;
+          },
+        },
+      });
+      expect(await respond(req, deps)).toMatchObject({ change: remove });
+      expect(screened).toBe(
+        `the answer\n\nDeleted event: Raid night (<t:${Date.parse("2026-10-23T20:00:00Z") / 1000}:F>)`,
+      );
+    });
+
+    it("changes nothing when the reply is blocked", async () => {
+      const { req, deps } = setup({
+        deps: {
+          answer: async () => answered({ change: rename }),
+          screenReply: async () => ({ blocked: true, category: "S1", p: 0.9, selfHarm: false, costUsd: 0 }),
+        },
+      });
+      expect(await respond(req, deps)).toEqual(bare("BLOCKED"));
+    });
+
+    it("drops invisible characters from an edit's text", async () => {
+      const sneaky: EventChange = {
+        ...rename,
+        edit: { name: "Raid​ night 2", where: { kind: "location", text: "Iron​forge" }, description: "b​ye" },
+      };
+      const { req, deps } = setup({ deps: { answer: async () => answered({ change: sneaky }) } });
+      expect((await respond(req, deps))?.change).toEqual({
+        ...rename,
+        edit: { name: "Raid night 2", where: { kind: "location", text: "Ironforge" }, description: "bye" },
+      });
+    });
+
+    it("hands the model the server's events and what the asker wrote, for the event tools", async () => {
+      const events: ServerEvents = { guildId: "1", list: async () => [onServer], channelsFor: () => [] };
+      const asked: { text: string; replyTo: string | null } = {
+        text: "delete raid night",
+        replyTo: "raid night is friday",
+      };
+      let told: { events: ServerEvents | null; asked: typeof asked } | undefined;
+      const { req, deps } = setup({
+        req: { events, asked },
+        deps: {
+          answer: async (_m, opts) => {
+            told = { events: opts.events, asked: opts.asked };
+            return answered();
+          },
+        },
+      });
+      await respond(req, deps);
+      expect(told).toEqual({ events, asked });
+    });
+
+    it("logs which kind of change the reply makes", async () => {
+      const logs: string[] = [];
+      const { req, deps } = setup({
+        deps: { answer: async () => answered({ change: rename }), log: (line) => logs.push(line) },
+      });
+      await respond(req, deps);
+      expect(logs.find((l) => l.startsWith("reply "))).toContain("event=edit");
+    });
   });
 
   it("drops what the channel or the asker doesn't allow, with a note for each", async () => {

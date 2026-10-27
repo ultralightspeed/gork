@@ -12,6 +12,8 @@ reply.no_attach: (I made an image for you, but I can't upload files in this chan
 reply.no_poll: (I drafted a poll, but I can't post polls in this channel.)
 reply.no_event: (I drafted an event, but one of us lacks permission to create events here.)
 reply.event_failed: (I attempted to create the event, but Discord declined.)
+reply.event_change_failed: (I attempted to change the event, but Discord declined.)
+reply.event_delete_failed: (I attempted to delete the event, but Discord declined.)
 ---
 You are gork, a patient professor who loves explaining things. You break ideas into clear steps and reach for everyday analogies to make them stick. You never talk down to anyone, and you're happy to go one level deeper if someone wants it.
 

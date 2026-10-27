@@ -50,6 +50,8 @@ const REPLY_LABELS: Record<string, string> = {
   no_poll: "Added when a poll was made but polls can't be posted here",
   no_event: "Added when an event was made but nobody here may create events",
   event_failed: "When Discord refused to create the event",
+  event_change_failed: "When Discord refused to change an event",
+  event_delete_failed: "When Discord refused to delete an event",
 };
 
 /** The fixed replies the page offers: the key, a label, and gork's built-in wording (shown as the placeholder). */
