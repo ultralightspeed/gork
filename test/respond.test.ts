@@ -41,6 +41,7 @@ const msg = (content: string, authorName = "amy"): Msg => ({
   content,
   attachments: [],
   embeds: [],
+  images: [],
 });
 const pass: ScreenVerdict = { blocked: false, strike: false, costUsd: 0.00001 };
 const clean: GuardVerdict = { blocked: false, costUsd: 0.00001 };
@@ -303,6 +304,17 @@ describe("respond: gates before any paid work", () => {
     const out = await respond(req, deps);
     expect(out?.text ?? null).toBe(expected);
     expect(calls.screenRequest + calls.answer + calls.download).toBe(0);
+  });
+
+  it("answers a mention with no text that carries an image or another attachment", async () => {
+    const image = "https://media.discordapp.net/attachments/1/2/a.png";
+    for (const question of [
+      { ...msg(""), images: [image] },
+      { ...msg(""), attachments: ["application/pdf"] },
+    ]) {
+      const { req, deps } = setup({ req: { question, imageUrls: question.images } });
+      expect((await respond(req, deps))?.text, JSON.stringify(question)).toBe("the answer");
+    }
   });
 
   it("skips screening once the daily budget is spent, and warns once per user per day (S4)", async () => {

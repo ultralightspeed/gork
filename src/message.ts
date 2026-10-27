@@ -1,7 +1,7 @@
 // Maps Discord messages to what the prompt and the image pipeline need. The input types are structural so
 // tests can use plain objects; discord.js's Message and MessageSnapshot satisfy them.
 import type { Msg } from "./context.ts";
-import type { ImageSource } from "./images.ts";
+import { type ImageSource, viewableImageUrl } from "./images.ts";
 import type { VideoSource } from "./video.ts";
 
 type AttachmentLike = {
@@ -48,6 +48,18 @@ export function forwardedText(m: Forwardable): string {
 const embedText = (e: EmbedLike) =>
   [e.title, e.url, e.description, ...e.fields.map((f) => `${f.name}: ${f.value}`)].filter(Boolean).join(" - ");
 
+// Sizes go along: the media proxy needs them to shrink an image without cropping it (images.ts, fitSize).
+const size = (w?: number | null, h?: number | null) => ({
+  ...(w != null && { width: w }),
+  ...(h != null && { height: h }),
+});
+
+const attachmentSource = (a: AttachmentLike): ImageSource => ({
+  url: a.url,
+  contentType: a.contentType,
+  ...size(a.width, a.height),
+});
+
 /** Replaces user and role mentions with readable @names; unknown ones become @someone and @role. */
 export function resolveNames(
   m: {
@@ -68,7 +80,10 @@ export function resolveNames(
     .replace(/<@&(\d+)>/g, (_s, id: string) => `@${m.guild?.roles.cache.get(id)?.name ?? "role"}`);
 }
 
-/** The message reduced to what the prompt needs; `content` is the already-cleaned text. */
+/**
+ * The message reduced to what the prompt needs; `content` is the already-cleaned text. The images gork could look at
+ * are listed apart from the other attachments, which keep only their type.
+ */
 export function toMsg(
   m: Forwardable & {
     author: { id: string; username: string; displayName?: string | null };
@@ -82,24 +97,20 @@ export function toMsg(
     authorName: m.member?.displayName ?? m.author.displayName ?? m.author.username,
     isSelf: m.author.id === selfId,
     content: [content, forwardedText(m)].filter(Boolean).join("\n"),
-    attachments: parts.flatMap((p) => [...p.attachments.values()].map((a) => a.contentType ?? "file")),
+    attachments: parts.flatMap((p) =>
+      [...p.attachments.values()]
+        .filter((a) => !viewableImageUrl(attachmentSource(a)))
+        .map((a) => a.contentType ?? "file"),
+    ),
     embeds: parts.flatMap((p) => p.embeds.map(embedText)).filter(Boolean),
+    images: imageSources(m).flatMap((s) => viewableImageUrl(s) ?? []),
   };
 }
 
 /** Attachments and embed image/thumbnail proxy URLs, from the message and its forwarded snapshots. */
 export function imageSources(m: Forwardable): ImageSource[] {
   return withForwards(m).flatMap((p) => {
-    // Sizes go along: the media proxy needs them to shrink an image without cropping it (images.ts, fitSize).
-    const size = (w?: number | null, h?: number | null) => ({
-      ...(w != null && { width: w }),
-      ...(h != null && { height: h }),
-    });
-    const fromAttachments = [...p.attachments.values()].map((a) => ({
-      url: a.url,
-      contentType: a.contentType,
-      ...size(a.width, a.height),
-    }));
+    const fromAttachments = [...p.attachments.values()].map(attachmentSource);
     const fromEmbeds = p.embeds
       .flatMap((e) => [e.image, e.thumbnail])
       .filter((i): i is EmbedImageLike & { proxyURL: string } => !!i?.proxyURL)

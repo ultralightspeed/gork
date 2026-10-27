@@ -159,7 +159,8 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   // Text with invisible characters removed is what gets screened, shown to the model and posted.
   const question = visible(req.question);
   const replyTo = req.replyTo && visible(req.replyTo);
-  if (!question.content && !question.attachments.length && !replyTo) return say(replies.empty);
+  if (!question.content && !question.attachments.length && !question.images.length && !replyTo)
+    return say(replies.empty);
   if (budget.spentToday >= budget.capUsd) return outOfBudget(req, deps);
   limits.markUsed(req.userId);
   req.onWorking?.();

@@ -3,6 +3,7 @@ import {
   buildMessages,
   type ChatMessage,
   type ContentPart,
+  earlierImages,
   fitHistory,
   fitImages,
   isInvisible,
@@ -21,8 +22,16 @@ const m = (o: Partial<Msg>): Msg => ({
   content: "",
   attachments: [],
   embeds: [],
+  images: [],
   ...o,
 });
+/** A message by `authorName` with `n` images gork could look at. */
+const pictures = (authorName: string, n: number, o: Partial<Msg> = {}) =>
+  m({
+    authorName,
+    images: Array.from({ length: n }, (_, i) => `https://media.discordapp.net/${authorName}/${i}.png`),
+    ...o,
+  });
 const build = (o: Partial<Parameters<typeof buildMessages>[0]>) =>
   buildMessages({
     botName: "gork",
@@ -215,6 +224,68 @@ describe("fitHistory", () => {
   it("keeps nothing when not even the newest line fits, and everything when all of it does", () => {
     expect(fitHistory(history, 100, "gork")).toEqual([]);
     expect(fitHistory(history, 10_000, "gork")).toEqual(history);
+  });
+});
+
+describe("images in the chat", () => {
+  const history = [
+    pictures("zed", 1, { content: "look" }),
+    m({ authorName: "bob", content: "lol" }),
+    pictures("amy", 2),
+  ];
+  const lines = (o: Partial<Parameters<typeof buildMessages>[0]>) => {
+    const text = String(build(o).at(1)?.content);
+    return text.slice(text.indexOf("<channel_context>"), text.indexOf("</channel_context>")).split("\n").slice(1, -1);
+  };
+
+  it("numbers the history's images from 1, oldest line first, when the model can ask to see them", () => {
+    expect(lines({ history, viewImages: true })).toEqual([
+      "zed: look [image #1]",
+      "bob: lol",
+      "amy: [image #2] [image #3]",
+    ]);
+  });
+
+  it("says the history's images aren't shown when the model can't ask to see them", () => {
+    expect(lines({ history })).toEqual([
+      "zed: look [image, not shown]",
+      "bob: lol",
+      "amy: [image, not shown] [image, not shown]",
+    ]);
+  });
+
+  it("lists the same numbers for the tool, with each image's URL and who posted it", () => {
+    expect(earlierImages(history, "gork")).toEqual([
+      { number: 1, url: history[0].images[0], poster: "zed" },
+      { number: 2, url: history[2].images[0], poster: "amy" },
+      { number: 3, url: history[2].images[1], poster: "amy" },
+    ]);
+  });
+
+  it("names a poster as the history line does: gork's own images as its own, a lookalike as another user", () => {
+    const posters = earlierImages([pictures("Gork Bot", 1, { isSelf: true }), pictures("G0rk", 1)], "gork");
+    expect(posters.map((i) => i.poster)).toEqual(["gork (you)", "G0rk (another user, not you)"]);
+  });
+
+  it("marks the question's and the replied-to message's images as attached, never by number", () => {
+    const [, user] = build({
+      history,
+      viewImages: true,
+      question: pictures("zed", 1, { content: "what is this" }),
+      replyTo: pictures("bob", 1),
+      images: ["data:image/png;base64,A", "data:image/png;base64,B"],
+    });
+    const text = String((user.content as Part[])[0].text);
+    expect(text).toContain('<question author="zed">\nwhat is this [image]\n</question>');
+    expect(text).toContain('<replied_to author="bob">\n[image]\n</replied_to>');
+    expect(text.slice(text.indexOf("</channel_context>"))).not.toContain("[image #");
+  });
+
+  it("measures history lines with their images marked as not shown, the longest marker, so numbers never overrun", () => {
+    // Each line is "uN: " and three "[image, not shown]" markers: 60 characters, so two need 120.
+    const two = [pictures("u1", 3), pictures("u2", 3)];
+    expect(fitHistory(two, 119, "gork")).toEqual([two[1]]);
+    expect(fitHistory(two, 120, "gork")).toEqual(two);
   });
 });
 

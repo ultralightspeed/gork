@@ -34,8 +34,11 @@ export interface Msg {
   authorName: string;
   isSelf: boolean;
   content: string;
+  /** Attachments other than `images`, by type (for example "application/pdf"). */
   attachments: string[];
   embeds: string[];
+  /** The images gork could look at, as the URLs to fetch them at (viewableImageUrl): attachments', then embeds'. */
+  images: string[];
 }
 
 export interface TriggerInput {
@@ -98,10 +101,20 @@ export function neutralize(text: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean;
 }
 
-function body(m: Msg, max: number): string {
+/**
+ * How an image shows in a message's text: attached to the request (the question's and the replied-to message's),
+ * numbered for view_images (the history's, when the model may ask to see them), or not shown.
+ */
+const ATTACHED_IMAGE = "image";
+const HIDDEN_IMAGE = "image, not shown";
+const numberedImage = (n: number) => `image #${n}`;
+
+/** The message's text, attachments and embeds, then one marker per image: `[image]` unless `imageMarkers` says. */
+function body(m: Msg, max: number, imageMarkers = m.images.map(() => ATTACHED_IMAGE)): string {
   const parts = [neutralize(m.content, max)];
   for (const a of m.attachments) parts.push(`[attachment: ${neutralize(a.replace(/\s+/g, " "), 100)}]`);
   for (const e of m.embeds) parts.push(`[embed: ${neutralize(e, 300)}]`);
+  for (const marker of imageMarkers) parts.push(`[${marker}]`);
   return parts.filter(Boolean).join(" ");
 }
 
@@ -131,9 +144,12 @@ function who(m: Msg, botName: string): string {
   return posesAsBot(m.authorName, botName) ? `${name} (another user, not you)` : name;
 }
 
-/** One history line: its author and its text, with line breaks folded so a message can't start a forged line. */
-export function renderMsg(m: Msg, max: number, botName: string): string {
-  return `${who(m, botName)}: ${body(m, max)}`.replace(/\s*\n\s*/g, " ");
+/**
+ * One history line: its author and its text, with line breaks folded so a message can't start a forged line.
+ * `imageMarkers` are the markers for the message's images (see body).
+ */
+export function renderMsg(m: Msg, max: number, botName: string, imageMarkers?: string[]): string {
+  return `${who(m, botName)}: ${body(m, max, imageMarkers)}`.replace(/\s*\n\s*/g, " ");
 }
 
 /** Most characters of a history message's text shown in its line. */
@@ -144,12 +160,33 @@ export function fitHistory(history: Msg[], budget: number, botName: string): Msg
   const kept: Msg[] = [];
   let used = 0;
   for (const h of [...history].reverse()) {
-    const length = renderMsg(h, HISTORY_LINE_MAX, botName).length;
+    // Measured with each image marked as not shown, the longest marker, so numbering the images can't overrun.
+    const length = renderMsg(
+      h,
+      HISTORY_LINE_MAX,
+      botName,
+      h.images.map(() => HIDDEN_IMAGE),
+    ).length;
     if (used + length > budget) break;
     kept.unshift(h);
     used += length;
   }
   return kept;
+}
+
+/** An image in the chat history the model may ask to see (view_images), numbered as the history lines show it. */
+export type EarlierImage = { number: number; url: string; poster: string };
+
+/** Each history message's image numbers: from 1, oldest message first, in the order each message lists them. */
+const imageNumbers = (history: Msg[]): number[][] => {
+  let n = 0;
+  return history.map((h) => h.images.map(() => ++n));
+};
+
+/** The images in `history`, with the numbers buildMessages shows them by and who posted each, as its lines name them. */
+export function earlierImages(history: Msg[], botName: string): EarlierImage[] {
+  const numbers = imageNumbers(history);
+  return history.flatMap((h, i) => h.images.map((url, j) => ({ number: numbers[i][j], url, poster: who(h, botName) })));
 }
 
 export function buildMessages(o: {
@@ -159,6 +196,8 @@ export function buildMessages(o: {
   replyTo: Msg | null;
   /** Recent chat, oldest first, already cut to fit (fitHistory): every message gets a line. */
   history: Msg[];
+  /** The model may ask to see the history's images (view_images), so its lines number them; else they aren't shown. */
+  viewImages?: boolean;
   images?: string[];
   /** Images attached to the question or replied-to message that weren't sent, because the model takes none. */
   unseenImages?: number;
@@ -166,7 +205,15 @@ export function buildMessages(o: {
   failedImages?: number;
   video?: VideoContext;
 }): ChatMessage[] {
-  const lines = o.history.map((h) => renderMsg(h, HISTORY_LINE_MAX, o.botName));
+  const numbers = imageNumbers(o.history);
+  const lines = o.history.map((h, i) =>
+    renderMsg(
+      h,
+      HISTORY_LINE_MAX,
+      o.botName,
+      o.viewImages ? numbers[i].map(numberedImage) : h.images.map(() => HIDDEN_IMAGE),
+    ),
+  );
   const blocks: string[] = [];
   if (lines.length) blocks.push(`<channel_context>\n${lines.join("\n")}\n</channel_context>`);
   if (o.replyTo)

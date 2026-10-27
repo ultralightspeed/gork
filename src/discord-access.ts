@@ -1,8 +1,7 @@
 // Reads from a Discord message what the asker and gork may do, who may be tagged, and which images to look at.
 import type { GuildMember, Message } from "discord.js";
-import { pickImageUrls } from "./images.ts";
+import type { Msg } from "./context.ts";
 import { buildPingContext, type MentionKind, type PingContext } from "./mentions.ts";
-import { imageSources } from "./message.ts";
 import { canCreateEvents, channelAbilities, type Permission } from "./permissions.ts";
 
 export const botRoleId = (m: Message): string | null => m.guild?.members.me?.roles.botRole?.id ?? null;
@@ -71,9 +70,12 @@ export function pingContext(
   });
 }
 
-/** Up to 3 images, the asker's own first; the replied-to message's are kept apart for the strike check. */
-export function splitImageUrls(message: Message, ref: Message | null) {
-  const imageUrls = pickImageUrls(imageSources(message), 3);
-  const replyImageUrls = ref ? pickImageUrls(imageSources(ref), 3 - imageUrls.length) : [];
+/** Most images attached to a request, the asker's own and the replied-to message's together. */
+const MAX_ATTACHED_IMAGES = 3;
+
+/** The images to attach, the asker's own first; the replied-to message's are kept apart for the strike check. */
+export function splitImageUrls(question: Msg, replyTo: Msg | null) {
+  const imageUrls = question.images.slice(0, MAX_ATTACHED_IMAGES);
+  const replyImageUrls = replyTo ? replyTo.images.slice(0, MAX_ATTACHED_IMAGES - imageUrls.length) : [];
   return { imageUrls, replyImageUrls };
 }

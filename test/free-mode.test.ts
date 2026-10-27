@@ -37,7 +37,14 @@ function cloudflare(chat: Array<() => Response>) {
   });
 }
 
-const msg = (content: string): Msg => ({ authorName: "amy", isSelf: false, content, attachments: [], embeds: [] });
+const msg = (content: string): Msg => ({
+  authorName: "amy",
+  isSelf: false,
+  content,
+  attachments: [],
+  embeds: [],
+  images: [],
+});
 
 /** A whole reply through the real model loop, tools and safety screens, with only the network faked. */
 async function fullReply(env: Record<string, string>) {

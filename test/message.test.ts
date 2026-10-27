@@ -52,17 +52,28 @@ describe("toMsg", () => {
     expect(toMsg({ ...forward, author: msg().author }, "", "99").content).toBe("[forwarded message] worth a listen");
   });
 
-  it("lists attachments and embeds from the message and its snapshots", () => {
+  it("lists the images gork could look at apart from the other attachments, from the message and its snapshots", () => {
     const own = msg({
       attachments: new Map([
-        ["1", { url: "u1", contentType: "image/jpeg" }],
-        ["2", { url: "u2", contentType: null }],
+        ["1", { url: "https://cdn.discordapp.com/attachments/1/2/a.png", contentType: "image/png" }],
+        ["2", { url: "https://cdn.discordapp.com/attachments/1/2/notes.pdf", contentType: "application/pdf" }],
+        ["3", { url: "https://cdn.discordapp.com/attachments/1/2/b.heic", contentType: "image/heic" }],
+        ["4", { url: "https://cdn.discordapp.com/attachments/1/2/blob", contentType: null }],
       ]),
-      embeds: [{ title: "Own", fields: [] }],
+      embeds: [
+        { title: "Own", fields: [], image: { proxyURL: "https://images-ext-1.discordapp.net/external/x/y.jpg" } },
+      ],
       messageSnapshots: new Map([["9", snap]]),
     });
     const out = toMsg(own, "", "99");
-    expect(out.attachments).toEqual(["image/jpeg", "file", "image/png"]);
+    // In imageSources order: each part's attachments, then its embed images; the message first, then its snapshots.
+    expect(out.images).toEqual([
+      "https://media.discordapp.net/attachments/1/2/a.png",
+      "https://images-ext-1.discordapp.net/external/x/y.jpg",
+      "https://media.discordapp.net/a.png",
+    ]);
+    // An image of a type gork can't look at stays an attachment, like any other file.
+    expect(out.attachments).toEqual(["application/pdf", "image/heic", "file"]);
     expect(out.embeds).toEqual(["Own", "Patch 2.1 notes - What changed this week"]);
   });
 

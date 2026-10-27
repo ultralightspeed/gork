@@ -25,38 +25,34 @@ export function fitSize(width?: number | null, height?: number | null): { width:
 }
 
 /**
- * Discord-hosted images, at most `max`. Stills are shrunk by the media proxy to fitSize (whole, in proportion); one
- * whose size isn't known is asked for as it is, since a guessed box would crop it. GIFs are requested as a PNG of their
- * first frame (`format=png`). If the proxy doesn't convert one, downloadImages drops it.
+ * The URL to fetch a Discord-hosted image at, or null when it isn't one gork can look at. Stills are shrunk by the
+ * media proxy to fitSize (whole, in proportion); one whose size isn't known is asked for as it is, since a guessed box
+ * would crop it. GIFs are requested as a PNG of their first frame (`format=png`). If the proxy doesn't convert one,
+ * downloadImages drops it.
  */
-export function pickImageUrls(sources: ImageSource[], max: number): string[] {
-  const out: string[] = [];
-  for (const s of sources) {
-    if (out.length >= max) break;
-    let u: URL;
-    try {
-      u = new URL(s.url);
-    } catch {
-      continue;
-    }
-    const external = /^images-ext-\d+\.discordapp\.net$/.test(u.hostname); // Discord's proxy for link-preview images
-    if (u.protocol !== "https:" || (!HOSTS.has(u.hostname) && !external)) continue;
-    const type = s.contentType?.split(";")[0].trim();
-    const gif = type ? type === "image/gif" : GIF_PATH.test(u.pathname);
-    const still = type ? STILL_TYPES.has(type) : IMAGE_PATH.test(u.pathname);
-    if (!gif && !still) continue;
-    if (gif) u.searchParams.set("format", "png");
-    if (!external) {
-      u.hostname = "media.discordapp.net";
-      const size = fitSize(s.width, s.height);
-      if (size) {
-        u.searchParams.set("width", String(size.width));
-        u.searchParams.set("height", String(size.height));
-      }
-    }
-    out.push(u.href);
+export function viewableImageUrl(s: ImageSource): string | null {
+  let u: URL;
+  try {
+    u = new URL(s.url);
+  } catch {
+    return null;
   }
-  return out;
+  const external = /^images-ext-\d+\.discordapp\.net$/.test(u.hostname); // Discord's proxy for link-preview images
+  if (u.protocol !== "https:" || (!HOSTS.has(u.hostname) && !external)) return null;
+  const type = s.contentType?.split(";")[0].trim();
+  const gif = type ? type === "image/gif" : GIF_PATH.test(u.pathname);
+  const still = type ? STILL_TYPES.has(type) : IMAGE_PATH.test(u.pathname);
+  if (!gif && !still) return null;
+  if (gif) u.searchParams.set("format", "png");
+  if (!external) {
+    u.hostname = "media.discordapp.net";
+    const size = fitSize(s.width, s.height);
+    if (size) {
+      u.searchParams.set("width", String(size.width));
+      u.searchParams.set("height", String(size.height));
+    }
+  }
+  return u.href;
 }
 
 /** The type of a PNG or JPEG judged by its first bytes (what the generator and Discord actually send), else null. */

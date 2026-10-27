@@ -557,6 +557,7 @@ describe("a page that tells the model to send chat text somewhere", () => {
       content: "what does https://blog.example/post say?",
       attachments: [],
       embeds: [],
+      images: [],
     };
     const given = givenLinks(question, null);
     const script = [

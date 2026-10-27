@@ -41,7 +41,14 @@ const replies: Replies = {
   noEvent: "(NO_EVENT)",
   eventFailed: "(EVENT_FAILED)",
 };
-const msg = (content: string): Msg => ({ authorName: "amy", isSelf: false, content, attachments: [], embeds: [] });
+const msg = (content: string): Msg => ({
+  authorName: "amy",
+  isSelf: false,
+  content,
+  attachments: [],
+  embeds: [],
+  images: [],
+});
 const completion = (message: object) =>
   json({ choices: [{ message }], usage: { prompt_tokens: 100, completion_tokens: 20 } });
 const lookCall = (args: object) => ({

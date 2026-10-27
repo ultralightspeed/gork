@@ -166,7 +166,7 @@ async function main(): Promise<void> {
           channelId: message.channelId,
           question,
           replyTo,
-          ...splitImageUrls(message, ref),
+          ...splitImageUrls(question, replyTo),
           video: pickVideos([...videoSources(message), ...(ref ? videoSources(ref) : [])], cfg.tools.videosPerDay),
           can,
           mayPingEveryone: mayPingEveryone(cfg.mentions, askerCanMentionEveryone(message), askerText),

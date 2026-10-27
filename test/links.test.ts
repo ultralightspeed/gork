@@ -8,6 +8,7 @@ const msg = (content: string, over: Partial<Msg> = {}): Msg => ({
   content,
   attachments: [],
   embeds: [],
+  images: [],
   ...over,
 });
 

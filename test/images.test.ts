@@ -1,17 +1,19 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { downloadImages, imageDataUrl, pickImageUrls, sniffImageMime } from "../src/images.ts";
+import { downloadImages, imageDataUrl, sniffImageMime, viewableImageUrl } from "../src/images.ts";
 
-describe("pickImageUrls: the size asked of the media proxy", () => {
+describe("viewableImageUrl: the size asked of the media proxy", () => {
   // The proxy crops to fill the width and height it is given (a 1400x150 screenshot asked for at 1024x1024 came
   // back as its middle 150x150), so the size asked for must keep the image's proportions.
   const size = (width: number, height: number) => {
-    const [url] = pickImageUrls(
-      [{ url: "https://cdn.discordapp.com/attachments/1/2/s.png", contentType: "image/png", width, height }],
-      1,
-    );
-    const u = new URL(url);
+    const url = viewableImageUrl({
+      url: "https://cdn.discordapp.com/attachments/1/2/s.png",
+      contentType: "image/png",
+      width,
+      height,
+    });
+    const u = new URL(String(url));
     return [Number(u.searchParams.get("width")), Number(u.searchParams.get("height"))];
   };
 
@@ -38,60 +40,56 @@ describe("pickImageUrls: the size asked of the media proxy", () => {
   });
 });
 
-describe("pickImageUrls", () => {
-  it("keeps only Discord-hosted still images, shrunk through the media proxy, capped at max", () => {
-    const urls = pickImageUrls(
-      [
-        {
-          url: "https://cdn.discordapp.com/attachments/1/2/a.png?ex=1",
-          contentType: "image/png",
-          width: 3000,
-          height: 3000,
-        },
-        { url: "https://media.discordapp.net/attachments/1/2/b.jpg", contentType: "image/jpeg" },
-        { url: "https://evil.example/c.png", contentType: "image/png" },
-        { url: "https://cdn.discordapp.com/attachments/1/2/d.pdf", contentType: "application/pdf" },
-        { url: "https://cdn.discordapp.com/attachments/1/2/e.webp", contentType: "image/webp" },
-        { url: "https://cdn.discordapp.com/attachments/1/2/f.png", contentType: "image/png" },
-      ],
-      3,
-    );
-    // The evil host and the PDF are skipped, and the cap stops it before f.png.
-    expect(urls).toEqual([
-      "https://media.discordapp.net/attachments/1/2/a.png?ex=1&width=1024&height=1024",
-      // No size known: no size asked for, since the proxy crops to whatever box it is given.
-      "https://media.discordapp.net/attachments/1/2/b.jpg",
-      "https://media.discordapp.net/attachments/1/2/e.webp",
-    ]);
-    // Plain http is refused even on a Discord host.
+describe("viewableImageUrl", () => {
+  it("takes only Discord-hosted still images, shrunk through the media proxy", () => {
     expect(
-      pickImageUrls([{ url: "http://cdn.discordapp.com/attachments/1/2/a.png", contentType: "image/png" }], 3),
-    ).toEqual([]);
+      viewableImageUrl({
+        url: "https://cdn.discordapp.com/attachments/1/2/a.png?ex=1",
+        contentType: "image/png",
+        width: 3000,
+        height: 3000,
+      }),
+    ).toBe("https://media.discordapp.net/attachments/1/2/a.png?ex=1&width=1024&height=1024");
+    // No size known: no size asked for, since the proxy crops to whatever box it is given.
+    expect(
+      viewableImageUrl({ url: "https://media.discordapp.net/attachments/1/2/b.jpg", contentType: "image/jpeg" }),
+    ).toBe("https://media.discordapp.net/attachments/1/2/b.jpg");
+    expect(
+      viewableImageUrl({ url: "https://cdn.discordapp.com/attachments/1/2/e.webp", contentType: "image/webp" }),
+    ).toBe("https://media.discordapp.net/attachments/1/2/e.webp");
+    expect(viewableImageUrl({ url: "https://evil.example/c.png", contentType: "image/png" })).toBeNull();
+    expect(
+      viewableImageUrl({ url: "https://cdn.discordapp.com/attachments/1/2/d.pdf", contentType: "application/pdf" }),
+    ).toBeNull();
+    // Plain http is refused even on a Discord host, and so is anything that isn't a URL.
+    expect(
+      viewableImageUrl({ url: "http://cdn.discordapp.com/attachments/1/2/a.png", contentType: "image/png" }),
+    ).toBeNull();
+    expect(viewableImageUrl({ url: "a.png", contentType: "image/png" })).toBeNull();
   });
 
   it("accepts Discord's external media proxy used by link previews, without rewriting it", () => {
     const u = "https://images-ext-1.discordapp.net/external/abc/https/pbs.twimg.com/media/y.jpg";
-    expect(pickImageUrls([{ url: u }], 3)).toEqual([u]);
+    expect(viewableImageUrl({ url: u })).toBe(u);
     for (const other of ["https://images-ext-1.evil.net/x.jpg", "https://images-ext-1.discordapp.net.evil.net/x.jpg"])
-      expect(pickImageUrls([{ url: other }], 3), other).toEqual([]);
+      expect(viewableImageUrl({ url: other }), other).toBeNull();
   });
 
   it("asks for a PNG first frame of GIFs, uploaded or link-preview, and judges an untyped embed by its path", () => {
-    const [upload, preview] = pickImageUrls(
-      [
-        { url: "https://cdn.discordapp.com/attachments/1/2/dance.gif?ex=1", contentType: "image/gif" },
-        { url: "https://images-ext-1.discordapp.net/external/abc/https/media.giphy.com/x/giphy.gif" },
-      ],
-      3,
+    const upload = String(
+      viewableImageUrl({ url: "https://cdn.discordapp.com/attachments/1/2/dance.gif?ex=1", contentType: "image/gif" }),
+    );
+    const preview = String(
+      viewableImageUrl({ url: "https://images-ext-1.discordapp.net/external/abc/https/media.giphy.com/x/giphy.gif" }),
     );
     expect(upload.startsWith("https://media.discordapp.net/attachments/1/2/dance.gif")).toBe(true);
     expect(new URL(upload).searchParams.get("format")).toBe("png");
     expect(new URL(preview).hostname).toBe("images-ext-1.discordapp.net"); // the host is not changed
     expect(new URL(preview).searchParams.get("format")).toBe("png");
     expect(
-      pickImageUrls([{ url: "https://media.discordapp.net/external/x/https/pbs.twimg.com/y.jpg" }], 3),
-    ).toHaveLength(1);
-    expect(pickImageUrls([{ url: "https://media.discordapp.net/external/x/page.html" }], 3)).toHaveLength(0);
+      viewableImageUrl({ url: "https://media.discordapp.net/external/x/https/pbs.twimg.com/y.jpg" }),
+    ).not.toBeNull();
+    expect(viewableImageUrl({ url: "https://media.discordapp.net/external/x/page.html" })).toBeNull();
   });
 });
 
