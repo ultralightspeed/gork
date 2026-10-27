@@ -52,7 +52,7 @@ Setting up gork takes about 15 minutes, and you don't write any code. You instal
 Already at home in a terminal? With Docker or Podman running:
 
 ```sh
-git clone --branch v0.1.3 https://github.com/ultralightspeed/gork.git
+git clone --branch v0.1.4 https://github.com/ultralightspeed/gork.git
 cd gork
 npm run setup
 ```
