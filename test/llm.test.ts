@@ -315,19 +315,20 @@ describe("answer", () => {
       expect(JSON.stringify(calls[1].body.messages)).not.toContain('"frame"');
     });
 
-    it("offer video_frames to the model only when the request has a video", async () => {
+    it("offers video_frames and view_images to the model only when the request has what they look at", async () => {
       const names = (m: { body: any }) => (m.body.tools ?? []).map((t: any) => t.function.name);
       const a = scripted([completion({ content: "ok" })]);
       await answer(cfg, msgs, { fetch: a.f, runTool: async () => ({ content: "", costUsd: 0 }), reserve: yes });
       expect(names(a.calls[0])).not.toContain("video_frames");
+      expect(names(a.calls[0])).not.toContain("view_images");
       const b = scripted([completion({ content: "ok" })]);
       await answer(cfg, msgs, {
         fetch: b.f,
         runTool: async () => ({ content: "", costUsd: 0 }),
         reserve: yes,
-        videoTool: true,
+        offer: { video: true, earlierImages: true },
       });
-      expect(names(b.calls[0])).toContain("video_frames");
+      expect(names(b.calls[0])).toEqual(expect.arrayContaining(["video_frames", "view_images"]));
     });
   });
 

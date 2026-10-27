@@ -7,11 +7,12 @@ gork screens what it reads and writes for harmful content. Besides writing a rep
 gork screens every request and every reply before anything is posted.
 
 - The request is screened, along with the message it replies to, any images, and the frames and speech of any video.
+- An image posted earlier in the chat is screened when gork asks to see it, before gork is shown it.
 - The reply is screened, including any poll text and the name, place and description of any event. Every generated image is screened too, before it is posted.
 
 The screen is Cloudflare's Clef-Flash model. It looks for five kinds of content: violent crime, sex crimes, sexual content involving minors, weapons of mass harm, and self-harm. Change what it checks with `GUARD_BLOCK` and how strict it is with `GUARD_THRESHOLD`. The check for sexual content involving minors is always on, whatever `GUARD_BLOCK` says.
 
-- A blocked request earns the asker a strike. At 3 strikes in 24 hours, gork ignores that person until the strikes age out (`STRIKE_LIMIT`; `0` turns muting off). A strike counts only the asker's own words and images, not the message they replied to. Strikes are kept in memory, so a restart clears them.
+- A blocked request earns the asker a strike. At 3 strikes in 24 hours, gork ignores that person until the strikes age out (`STRIKE_LIMIT`; `0` turns muting off). A strike counts only the asker's own words and images, not the message they replied to or an image posted earlier in the chat. Strikes are kept in memory, so a restart clears them.
 - For self-harm, gork does not answer. It sends a fixed, caring reply that points to a crisis line. A persona cannot change it.
 - The screen fails closed. If it is down or its answer cannot be read, gork posts nothing it wrote and says its safety check is down, or, when Workers AI's free daily allowance is what ran out, that it can't answer until 00:00 UTC. If an image cannot be checked, the image is dropped and the reply says so.
 
@@ -91,6 +92,8 @@ In credits mode gork can search the web when an answer depends on current facts.
 The log line for each reply shows the searches as `search=<SEARCH_PROVIDER>+<SEARCH_FALLBACK>`, for example `search=1+1`. Search problems are logged with the provider and status, such as `web_search: ceramic found nothing; retried on linkup`, never with the query.
 
 ## Images
+
+gork sees the images attached to the question and to the message it replies to. Images posted earlier in the chat are listed to it by number, and it looks at one only when the question is about it, such as "what is this?" right after someone posts an image: at most 4 in a reply, each screened first. One that fails the screen, or can't be checked, isn't shown, and gork says it can't see it. Earlier images aren't offered when the model can't see images (free mode) or tool calls are off (`MAX_TOOL_CALLS=0`).
 
 gork can generate an image from a description. It posts the image only when the person asking has the Attach Files permission in that channel, and gork does too. Every generated image is screened before it is posted. If the screen blocks it or can't check it, the image is dropped and the reply says so.
 

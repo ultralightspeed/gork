@@ -111,6 +111,16 @@ describe("systemPrompt", () => {
     expect(rule).toContain("video_frames");
   });
 
+  it("tells the model how to see images posted earlier in the chat, only when asked about one, and that they're untrusted", () => {
+    const lines = systemPrompt(p, "2026-10-19").split("\n");
+    const rule = lines.find((l) => l.startsWith("- Earlier images:"));
+    expect(rule).toContain("[image #N]");
+    expect(rule).toContain("view_images");
+    expect(rule).toMatch(/only when the question is about one of them/);
+    expect(rule).toContain("[image, not shown]");
+    expect(lines.find((l) => l.includes("untrusted text"))).toContain("view_images");
+  });
+
   it('states the current local date, weekday and time in TIMEZONE, so "Friday 8pm" can be resolved', () => {
     // 2026-10-19 is a Monday; 18:05 UTC is 14:05 in New York.
     const now = new Date("2026-10-19T18:05:00Z");

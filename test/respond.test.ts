@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { Budget } from "../src/budget.ts";
 import { FreeAllowanceError } from "../src/cf.ts";
-import type { ChatMessage, Msg } from "../src/context.ts";
+import { type ChatMessage, MAX_IMAGES_PER_REQUEST, type Msg } from "../src/context.ts";
+import { EarlierImages } from "../src/earlierimages.ts";
 import type { ScheduledEvent } from "../src/event.ts";
 import type { GuardVerdict, ScreenVerdict } from "../src/guard.ts";
 import { GUARD_CATEGORIES, screenRequest } from "../src/guard.ts";
@@ -112,6 +113,8 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     working: 0,
     video: 0,
     watch: 0,
+    earlier: 0,
+    earlierRoom: [] as number[],
   };
   const cfg = testConfig();
   const dir = mkdtempSync(join(tmpdir(), "gork-"));
@@ -135,6 +138,15 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     videoWatch: (video) => {
       calls.watch++;
       return new VideoWatch(video.frames, { extract: async () => [], screen: async () => clean });
+    },
+    earlierImages: (images, room) => {
+      calls.earlier++;
+      calls.earlierRoom.push(room);
+      return new EarlierImages(
+        images,
+        { download: async () => "data:image/png;base64,EARLIER", screen: async () => clean },
+        room,
+      );
     },
     screenRequest: async () => {
       calls.screenRequest++;
@@ -905,6 +917,78 @@ describe("a model that can't see images (free mode's glm-4.7-flash rejects them 
     expect(body).not.toContain("image_url");
     expect(body).toContain("hello there");
     expect(body).toContain("can't see images");
+  });
+});
+
+describe("respond: images earlier in the chat", () => {
+  const SHOT = "https://media.discordapp.net/attachments/1/2/shot.png";
+  const shot = { ...msg("", "zed"), images: [SHOT] };
+  const withShot = (...before: Msg[]) => ({ history: async () => [...before, msg("anyone up for MC"), shot] });
+  type Seen = { messages: ChatMessage[]; earlier: EarlierImages | null };
+  const capture = (seen: Seen) => async (messages: ChatMessage[], o: { earlierImages: EarlierImages | null }) => {
+    seen.messages = messages;
+    seen.earlier = o.earlierImages;
+    return answered();
+  };
+
+  it("numbers them in the prompt and hands the answer step a viewer over the same numbers", async () => {
+    const seen: Seen = { messages: [], earlier: null };
+    const { req, deps, calls } = setup({ req: withShot(), deps: { answer: capture(seen) } });
+    await respond(req, deps);
+    expect(String(seen.messages[1].content)).toContain("zed: [image #1]");
+    const shown = await seen.earlier?.view({ numbers: [1] });
+    expect(shown?.images).toEqual([{ label: "Image #1, posted by zed", dataUrl: "data:image/png;base64,EARLIER" }]);
+    expect(calls.earlier).toBe(1);
+  });
+
+  it("numbers only the images on lines the model sees: an image older than the history's budget isn't offered", async () => {
+    const chatter = Array.from({ length: 60 }, (_, i) => msg("x".repeat(400), `u${i}`)); // about 18,000 characters
+    const seen: Seen = { messages: [], earlier: null };
+    const { req, deps, calls } = setup({
+      req: { history: async () => [shot, ...chatter] },
+      deps: { answer: capture(seen) },
+    });
+    await respond(req, deps);
+    expect(calls.earlier).toBe(0);
+    expect(seen.earlier).toBeNull();
+    expect(String(seen.messages[1].content)).not.toContain("[image");
+  });
+
+  it("leaves the viewer only the room the asker's own images leave in the request", async () => {
+    const { req, deps, calls } = setup({ req: { ...withShot(), imageUrls: ["a", "b", "c"] } });
+    await respond(req, deps);
+    expect(calls.earlierRoom).toEqual([MAX_IMAGES_PER_REQUEST - 3]);
+  });
+
+  it.each([
+    ["the history has no images", {}, {}, false],
+    ["the model can't see images", withShot(), { BILLING_MODE: "free" }, true],
+    ["tool calls are switched off", withShot(), { MAX_TOOL_CALLS: "0" }, true],
+  ])("offers no viewer when %s, and marks any image as not shown", async (_why, request, config, hasImage) => {
+    const seen: Seen = { messages: [], earlier: null };
+    const { req, deps, calls } = setup({ req: request, deps: { cfg: testConfig(config), answer: capture(seen) } });
+    await respond(req, deps);
+    expect(calls.earlier).toBe(0);
+    expect(seen.earlier).toBeNull();
+    const prompt = JSON.stringify(seen.messages);
+    expect(prompt.includes("zed: [image, not shown]")).toBe(hasImage);
+    expect(prompt).not.toContain("[image #");
+  });
+
+  it("logs how many earlier images the model was shown", async () => {
+    const lines: string[] = [];
+    const { req, deps } = setup({
+      req: withShot(),
+      deps: {
+        log: (line) => lines.push(line),
+        answer: async (_m, o) => {
+          await o.earlierImages?.view({ numbers: [1] });
+          return answered();
+        },
+      },
+    });
+    await respond(req, deps);
+    expect(lines.find((l) => l.startsWith("reply "))).toMatch(/ earlier=1 /);
   });
 });
 

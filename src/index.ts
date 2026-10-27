@@ -17,9 +17,10 @@ import {
 } from "./discord-access.ts";
 import { postEvent, postPoll, sendReply, startTyping } from "./discord-reply.ts";
 import { distrustRoots, OLD_NODE_WARNING } from "./distrust.ts";
+import { EarlierImages } from "./earlierimages.ts";
 import { describeError, isFatalCloseCode, isFatalLoginError } from "./errors.ts";
 import { caBundle, Gate } from "./ffmpeg.ts";
-import { screenFrames, screenImages, screenReply, screenRequest } from "./guard.ts";
+import { screenEarlierImages, screenFrames, screenImages, screenReply, screenRequest } from "./guard.ts";
 import { HEARTBEAT_FILE, startHeartbeat, writeHeartbeat } from "./heartbeat.ts";
 import { downloadImages } from "./images.ts";
 import { createFatal, createWatchdog } from "./lifecycle.ts";
@@ -116,13 +117,23 @@ async function main(): Promise<void> {
         },
         room,
       ),
+    earlierImages: (images, room) =>
+      new EarlierImages(
+        images,
+        {
+          download: async (url) => (await downloadImages([url]))[0] ?? null,
+          screen: (shown) => screenEarlierImages(cfg, shown),
+          log,
+        },
+        room,
+      ),
     screenRequest: (question, replyTo, media) => screenRequest(cfg, question, replyTo, media),
     screenReply: (question, text) => screenReply(cfg, question, text),
     screenImages: (images, context) => screenImages(cfg, images, context),
-    answer: (messages, { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, video, links }) => {
+    answer: (messages, { mayPingEveryone, mayCreateEvents, mayCreatePolls, refusals, video, earlierImages, links }) => {
       return answer(cfg, messages, {
         reserve: (usd) => budget.tryReserve(usd),
-        videoTool: !!video,
+        offer: { video: !!video, earlierImages: !!earlierImages },
         runTool: (name, args, tally, turn) =>
           runTool(cfg, name, args, {
             state: toolState,
@@ -135,6 +146,7 @@ async function main(): Promise<void> {
             mayCreatePolls,
             refusals,
             video: video ?? undefined,
+            earlierImages: earlierImages ?? undefined,
             links,
           }),
       });

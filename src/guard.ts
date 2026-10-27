@@ -126,19 +126,40 @@ export function screenImages(
 }
 
 /**
- * Screens frames taken from a video, as untrusted content in the asker's request (the prompt questions). It only
- * tells whether they pass: frames are never the asker's own words, so there is no strike. Throws on any failure.
+ * Screens images that aren't the asker's own words, as untrusted content in their request (the prompt questions). It
+ * only tells whether they pass, so there is no strike. Throws on any failure.
  */
-export async function screenFrames(
+async function screenUntrustedImages(
+  cfg: Config,
+  what: string,
+  images: string[],
+  fetchFn: typeof fetch | undefined,
+): Promise<GuardVerdict> {
+  if (images.length === 0) return { blocked: false, costUsd: 0 };
+  return checkContent(cfg, "prompt", what, { fetchFn, images });
+}
+
+/** Screens frames taken from a video (see screenUntrustedImages). */
+export function screenFrames(
   cfg: Config,
   frames: string[],
   { fetchFn }: Pick<Options, "fetchFn"> = {},
 ): Promise<GuardVerdict> {
-  if (frames.length === 0) return { blocked: false, costUsd: 0 };
-  return checkContent(cfg, "prompt", "Frames taken from a video attached to the message.", {
+  return screenUntrustedImages(cfg, "Frames taken from a video attached to the message.", frames, fetchFn);
+}
+
+/** Screens images posted earlier in the chat that the model asked to see (view_images; see screenUntrustedImages). */
+export function screenEarlierImages(
+  cfg: Config,
+  images: string[],
+  { fetchFn }: Pick<Options, "fetchFn"> = {},
+): Promise<GuardVerdict> {
+  return screenUntrustedImages(
+    cfg,
+    "Images posted earlier in the chat, which the question may be about.",
+    images,
     fetchFn,
-    images: frames,
-  });
+  );
 }
 
 async function checkOnce(

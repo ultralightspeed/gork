@@ -4,6 +4,8 @@ import type { Config } from "./config.ts";
 import {
   buildMessages,
   type ChatMessage,
+  type EarlierImage,
+  earlierImages,
   fitHistory,
   HISTORY_MAX_CHARS,
   MAX_IMAGES_PER_REQUEST,
@@ -11,6 +13,7 @@ import {
   stripInvisible,
   type VideoContext,
 } from "./context.ts";
+import type { EarlierImages } from "./earlierimages.ts";
 import { describeError } from "./errors.ts";
 import { eventScreenText, type ScheduledEvent } from "./event.ts";
 import type { GuardVerdict, ScreenVerdict } from "./guard.ts";
@@ -92,6 +95,8 @@ export type RespondDeps = {
   /** Opens the video for the model to look closer at (the video_frames tool): over the pool that was just screened. */
   /** `room`: how many images the request has space for beside the asker's own (MAX_IMAGES_PER_REQUEST less those). */
   videoWatch: (video: VideoResult, room: number) => VideoWatch;
+  /** Opens the history's images for the model to look at (the view_images tool); `room` as for videoWatch. */
+  earlierImages: (images: EarlierImage[], room: number) => EarlierImages;
   /** `videoText` is the transcript of an attached video ("" when it had none), or null when there is no video. */
   screenRequest: (
     question: string,
@@ -105,6 +110,7 @@ export type RespondDeps = {
     messages: ChatMessage[],
     /**
      * `video` is set when the model may look closer at a watched video; without it, it has no video_frames tool.
+     * `earlierImages` is set when the model may look at the history's images; without it, no view_images tool.
      * `links` is this reply's own set of links the model may open (tools.ts), starting with the ones the asker gave.
      */
     opts: {
@@ -113,6 +119,7 @@ export type RespondDeps = {
       mayCreatePolls: boolean;
       refusals?: { event?: string; poll?: string };
       video: VideoWatch | null;
+      earlierImages: EarlierImages | null;
       links: LinkSet;
     },
   ) => Promise<LlmResult>;
@@ -218,7 +225,11 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   // Frames share the request's image limit with the asker's own images, which always stay.
   const room = MAX_IMAGES_PER_REQUEST - images.length;
   const look = frames.length > 0 && cfg.tools.maxCalls > 0 && video ? deps.videoWatch(video, room) : null;
-  const history = await req.history();
+  const history = fitHistory(await req.history(), HISTORY_MAX_CHARS, deps.botName);
+  // The history's images can be shown only to a model that sees images and may call tools (view_images). They are
+  // numbered from the history as fitted, so the numbers are the ones on the lines the model reads.
+  const viewable = sees && cfg.tools.maxCalls > 0 ? earlierImages(history, deps.botName) : [];
+  const earlier = viewable.length ? deps.earlierImages(viewable, room) : null;
   const system = deps.systemPrompt();
   // Links the model may open: the question's and the replied-to message's, and any page on a site the operator's
   // personality names (its own instructions). web_search adds its results during the reply.
@@ -229,7 +240,8 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
     system,
     question,
     replyTo,
-    history: fitHistory(history, HISTORY_MAX_CHARS, deps.botName),
+    history,
+    viewImages: earlier !== null,
     images,
     unseenImages,
     failedImages,
@@ -244,6 +256,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
       mayCreatePolls: req.mayCreatePolls,
       refusals: req.refusals,
       video: look,
+      earlierImages: earlier,
       links,
     });
   } catch (err) {
@@ -297,7 +310,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
   }
   const overview = video ? videoOverview(video.frames, room).length : 0;
   log(
-    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} search=${result.searches.primary}+${result.searches.fallback} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? 1 : 0} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
+    `reply user=${req.who} guild=${req.where} in=${result.promptTokens} out=${result.completionTokens}${result.usageEstimated ? "(est)" : ""} tools=${result.toolCalls} search=${result.searches.primary}+${result.searches.fallback} imgs=${images.length} frames=${frames.length} overview=${overview} shown=${look ? look.framesShown : overview} earlier=${earlier?.shown ?? 0} gen=${files.length} poll=${poll ? 1 : 0} event=${event ? 1 : 0} cost=$${result.costUsd.toFixed(5)} today=$${budget.spentToday.toFixed(4)}/$${budget.capUsd}`,
   );
   return { text, files, poll, event, pingEveryone: result.pingEveryone && req.mayPingEveryone };
 }

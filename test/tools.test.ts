@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EARLIER_IMAGES_PER_CALL, EARLIER_IMAGES_PER_REPLY, EarlierImages } from "../src/earlierimages.ts";
 import { givenLinks, hidesPreviews, LinkSet } from "../src/links.ts";
 import { answer } from "../src/llm.ts";
 import { MAX_SEARCH_QUERY, webSearch } from "../src/search.ts";
@@ -648,6 +649,45 @@ describe("video_frames tool", () => {
     });
     expect(r.images).toBeUndefined();
     expect(r.costUsd).toBe(0.1);
+  });
+});
+
+describe("view_images tool", () => {
+  const names = (offer: { video?: boolean; earlierImages?: boolean } = {}) =>
+    toolDefs(cfg, offer).map((t) => t.function.name);
+  const earlier = () =>
+    new EarlierImages([{ number: 1, url: "https://media.discordapp.net/attachments/1/2/a.png", poster: "zed" }], {
+      download: async () => "data:image/png;base64,AAA",
+      screen: async () => ({ blocked: false, costUsd: 0.00004 }),
+    });
+
+  it("exists only for a request whose chat history has images, even if the model calls it anyway", async () => {
+    expect(names()).not.toContain("view_images");
+    expect(names({ earlierImages: true })).toContain("view_images");
+    expect(names({ earlierImages: true })).not.toContain("video_frames");
+    const r = await callTool(cfg, "view_images", JSON.stringify({ numbers: [1] }));
+    expect(r.content).toMatch(/unknown tool/i);
+    expect(r.images).toBeUndefined();
+  });
+
+  it("returns the image asked for, labelled with its number and poster, and charges its screening", async () => {
+    const r = await callTool(cfg, "view_images", JSON.stringify({ numbers: [1] }), { earlierImages: earlier() });
+    expect(r.images).toEqual([{ label: "Image #1, posted by zed", dataUrl: "data:image/png;base64,AAA" }]);
+    expect(r.costUsd).toBe(0.00004);
+  });
+
+  it("gives a teaching error and no images for a bad call", async () => {
+    const r = await callTool(cfg, "view_images", JSON.stringify({ number: 1 }), { earlierImages: earlier() });
+    expect(r.images).toBeUndefined();
+    expect(r.content).toContain('{"numbers": [2]}');
+  });
+
+  it("states its limits with the numbers that enforce them", () => {
+    const view = toolDefs(cfg, { earlierImages: true }).find((t) => t.function.name === "view_images");
+    const description = view?.function.description ?? "";
+    expect(description).toContain("[image #N]");
+    expect(description).toContain(`${EARLIER_IMAGES_PER_CALL} per call`);
+    expect(description).toContain(`${EARLIER_IMAGES_PER_REPLY} per reply`);
   });
 });
 

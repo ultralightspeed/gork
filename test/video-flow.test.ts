@@ -108,6 +108,9 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
         },
         room,
       ),
+    earlierImages: () => {
+      throw new Error("this chat has no history, so no earlier images");
+    },
     screenRequest: (q, r, media) => screenRequest(cfg, q, r, { ...media, fetchFn: cf.f }),
     screenReply: (q, text) => screenReply(cfg, q, text, { fetchFn: cf.f }),
     screenImages: (images, context) => screenImages(cfg, images, context, { fetchFn: cf.f }),
@@ -115,7 +118,7 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
       answer(cfg, messages, {
         fetch: cf.f,
         reserve: (usd) => deps.budget.tryReserve(usd),
-        videoTool: !!watch,
+        offer: { video: !!watch },
         runTool: (name, args, tally, turn) =>
           runTool(cfg, name, args, {
             state,

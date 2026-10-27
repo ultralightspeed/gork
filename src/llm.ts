@@ -3,7 +3,7 @@ import type { Config } from "./config.ts";
 import { type ChatMessage, fitImages, forWire, type ToolImage, toolImagesMessage } from "./context.ts";
 import type { ScheduledEvent } from "./event.ts";
 import type { Poll } from "./poll.ts";
-import { type Attachment, type ReplyTally, type ToolResult, type ToolTurn, toolDefs } from "./tools.ts";
+import { type Attachment, type ReplyTally, type ToolOffer, type ToolResult, type ToolTurn, toolDefs } from "./tools.ts";
 
 export type LlmResult = {
   text: string;
@@ -145,8 +145,8 @@ export async function answer(
     reserve: (usd: number) => boolean;
     /** The clock, in ms; injectable for tests. */
     now?: () => number;
-    /** This request has a watched video, so the model is offered the video_frames tool. */
-    videoTool?: boolean;
+    /** Which of the tools only some requests get (video_frames, view_images) this one is offered. */
+    offer?: ToolOffer;
   },
 ): Promise<LlmResult> {
   const f = deps.fetch ?? fetch;
@@ -199,7 +199,7 @@ export async function answer(
     reserved += roundUsd;
     let data: Completion;
     try {
-      data = await chat(cfg, sent, toolsOn ? toolDefs(cfg, { video: deps.videoTool }) : null, f);
+      data = await chat(cfg, sent, toolsOn ? toolDefs(cfg, deps.offer) : null, f);
     } catch (err) {
       const message =
         err instanceof ChatHttpError ? `LLM HTTP ${err.status}: ${err.body.slice(0, 160)}` : (err as Error).message;

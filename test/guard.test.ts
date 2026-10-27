@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { FreeAllowanceError } from "../src/cf.ts";
-import { checkContent, GUARD_CATEGORIES, screenFrames, screenReply, screenRequest } from "../src/guard.ts";
+import {
+  checkContent,
+  GUARD_CATEGORIES,
+  screenEarlierImages,
+  screenFrames,
+  screenReply,
+  screenRequest,
+} from "../src/guard.ts";
 import { fakeFetch, json, testConfig } from "./helpers.ts";
 
 const cfg = testConfig();
@@ -221,6 +228,29 @@ describe("screenFrames", () => {
   it("makes no call for no frames", async () => {
     const { f, calls } = fakeFetch(() => clef(all({})));
     expect(await screenFrames(cfg, [], { fetchFn: f })).toEqual({ blocked: false, costUsd: 0 });
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("screenEarlierImages", () => {
+  const bad = "data:image/png;base64,BAD";
+
+  it("screens an image from earlier in the chat as part of the request, and blocks (never strikes) when flagged", async () => {
+    const { f, calls } = fakeFetch((c) => clef(all({ S4: (c.body.images ?? []).includes(bad) ? 0.95 : 0 })));
+    const v = await screenEarlierImages(cfg, [bad], { fetchFn: f });
+    expect(v).toMatchObject({ blocked: true, category: "S4" });
+    expect(v).not.toHaveProperty("strike");
+    expect(calls[0].body.images).toEqual([bad]);
+    expect(calls[0].body.state).toMatch(/earlier in the chat/);
+  });
+
+  it("throws when the guard fails, so callers fail closed", async () => {
+    await expect(screenEarlierImages(cfg, [bad], { fetchFn: reply({}, 500) })).rejects.toThrow();
+  });
+
+  it("makes no call for no images", async () => {
+    const { f, calls } = fakeFetch(() => clef(all({})));
+    expect(await screenEarlierImages(cfg, [], { fetchFn: f })).toEqual({ blocked: false, costUsd: 0 });
     expect(calls).toHaveLength(0);
   });
 });

@@ -95,6 +95,9 @@ async function fullReply(env: Record<string, string>) {
     videoWatch: () => {
       throw new Error("no video in this request");
     },
+    earlierImages: () => {
+      throw new Error("free mode's model can't see images, so it is never offered the history's");
+    },
     screenRequest: (q, r, media) => screenRequest(cfg, q, r, { ...media, fetchFn: f }),
     screenReply: (q, text) => screenReply(cfg, q, text, { fetchFn: f }),
     screenImages: (images, context) => screenImages(cfg, images, context, { fetchFn: f }),
