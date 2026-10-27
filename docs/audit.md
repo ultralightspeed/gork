@@ -144,13 +144,13 @@ There is no telemetry, analytics or update check. Apart from the destinations a 
 
 ### Verifying a release image
 
-Release images are built by `.github/workflows/image.yml` from a `v*` tag, with a GitHub artifact attestation. To check that an image was built by that workflow from that tag:
+Release images are built by `.github/workflows/image.yml` from a `v*` tag, on GitHub's own runners, with a GitHub artifact attestation. Each release's notes list the image's digest (the `index` line). To check that the image with that digest was built by that workflow from that tag, with the [GitHub CLI](https://cli.github.com/) signed in to any account:
 
 ```sh
-gh attestation verify oci://ghcr.io/ultralightspeed/gork:<version> --repo ultralightspeed/gork --signer-workflow ultralightspeed/gork/.github/workflows/image.yml --source-ref refs/tags/v<version>
+gh attestation verify oci://ghcr.io/ultralightspeed/gork@sha256:<index digest> --repo ultralightspeed/gork --signer-workflow ultralightspeed/gork/.github/workflows/image.yml --source-ref refs/tags/v<version> --deny-self-hosted-runners
 ```
 
-To compare an image with the source, build it yourself with `npm run up -- --build` and read the `Dockerfile`.
+A tag can be moved and a digest can't, so check by digest, and run that digest by pinning it in `GORK_IMAGE` ([setup.md](setup.md#checking-the-image)). To compare an image with the source, build it yourself with `npm run up -- --build` and read the `Dockerfile`.
 
 ## Limits
 

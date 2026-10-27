@@ -49,7 +49,7 @@ You can skip the setup page. These steps work with the code in this repository.
    - `gork-admin`: AI Gateway Read and Write. This one stays on your computer and is not given to the container. It can change every AI Gateway in the account.
 
    Cloudflare renames things now and then. If a permission has a different name in the dashboard, pick the closest match.
-5. Copy `.env.example` to `.env`. Fill in `DISCORD_TOKEN`, `GUILD_IDS`, `CF_ACCOUNT_ID`, `CF_RUN_TOKEN` and `CF_ADMIN_TOKEN`. For free mode, also set `BILLING_MODE=free`. If you already have an AI Gateway named `gork`, set `AI_GATEWAY_ID` to a different name. Put comments on their own lines and do not put quotes around values. A bad value stops `npm run up`, and the message gives the setting's name, not its value: `CF_ACCOUNT_ID` must be 32 hex characters, `AI_GATEWAY_ID` a simple name, and `LLM_BASE_URL` empty or an https address.
+5. Copy `.env.example` to `.env`. Fill in `DISCORD_TOKEN`, `GUILD_IDS`, `CF_ACCOUNT_ID`, `CF_RUN_TOKEN` and `CF_ADMIN_TOKEN`. For free mode, also set `BILLING_MODE=free`. If you already have an AI Gateway named `gork`, set `AI_GATEWAY_ID` to a different name. Put comments on their own lines and do not put quotes around values. A bad value stops `npm run up`, and the message gives the setting's name, not its value: `CF_ACCOUNT_ID` must be 32 hex characters, `AI_GATEWAY_ID` a simple name, and `LLM_BASE_URL` empty or an https address. On Mac or Linux, run `chmod 600 .env` so only you can read it; the setup page does this for you.
 6. Start Docker or Podman, then run `npm run up`.
 
 ## Docker or Podman, and the image
@@ -66,6 +66,24 @@ By default `npm run up` downloads the ready-made image `ghcr.io/ultralightspeed/
 - `npm run up -- --build`, or `GORK_IMAGE=build` in `.env`, always builds from this folder. Use it after you change the code: the released image holds the release, not your edits.
 - `GORK_IMAGE=ghcr.io/you/gork:1.2` runs another image. Write the full name, because Podman has no default registry. If it cannot be downloaded or found, `npm run up` stops rather than build something else.
 - `npm run destroy` removes the downloaded image too, but not an image you set in `GORK_IMAGE`.
+
+### Checking the image
+
+`npm run up` downloads the image by its version tag, and doesn't check what it gets. To run exactly the image a release published, pin it by its digest: each release's notes list it, as the `index` line under **Image**. Put it in `.env`:
+
+```
+GORK_IMAGE=ghcr.io/ultralightspeed/gork@sha256:<index digest>
+```
+
+`npm run up` then runs that image, or stops if it can't get it; it never builds something else instead. When you update gork, change the digest to the new release's, or remove the line, or gork keeps running the old image.
+
+To check that the image was built by this repository's release workflow from that release's tag, use the [GitHub CLI](https://cli.github.com/), signed in to any GitHub account (`gh auth login`):
+
+```sh
+gh attestation verify oci://ghcr.io/ultralightspeed/gork@sha256:<index digest> --repo ultralightspeed/gork --signer-workflow ultralightspeed/gork/.github/workflows/image.yml --source-ref refs/tags/v<version> --deny-self-hosted-runners
+```
+
+This proves where the image came from, not that its code is safe: for that, read the code of the same release, or build the image yourself with `npm run up -- --build`.
 
 Podman needs a few extra things on some systems. They are in [troubleshooting.md](troubleshooting.md#docker-or-podman-problems).
 
@@ -107,10 +125,10 @@ Run every command from the folder you set gork up in. Docker and Podman name gor
 
 gork doesn't update itself. Each release has a version number, and `npm run up` runs the image for the version of your copy of gork, so you update by getting the new copy and running `npm run up`. Security fixes come out as new releases, so update when one appears. To hear about them, click **Watch** at the top of the GitHub page, then **Custom**, tick **Releases** and click **Apply**.
 
-1. Get the new version into the same folder (keep the folder: gork's container and data are named after it).
-   - If you used `git clone`: in a terminal in the gork folder, run `git pull`.
-   - If you downloaded the ZIP: download the new ZIP, open it, and copy everything inside its `gork-main` folder over your gork folder, replacing the files when asked. Your `.env`, your `personas/custom.md` and gork's data are not in the ZIP, so they stay as they are.
-2. Run `npm run up`. It downloads the new version's image and restarts gork with your settings.
+1. Get the new release into the same folder. Keep the folder and its name, even if it is `gork-main` from an older download: gork's container and data are named after it.
+   - If you used `git clone`: in a terminal in the gork folder, run `git fetch --tags`, then `git checkout v<new version>` with the release's name, such as `git checkout v1.2.3`.
+   - If you downloaded a ZIP: on the [latest release](https://github.com/ultralightspeed/gork/releases/latest), click **Source code (zip)** under **Assets**, open it, and copy everything inside its folder over your gork folder, replacing the files when asked. Your `.env`, your `personas/custom.md` and gork's data are not in the ZIP, so they stay as they are.
+2. Run `npm run up`. It downloads the new version's image and restarts gork with your settings. If you pinned the image in `GORK_IMAGE` (see [Checking the image](#checking-the-image)), change it to the new release's digest first.
 
 The [releases page](https://github.com/ultralightspeed/gork/releases) says what changed in each version.
 

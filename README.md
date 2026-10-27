@@ -52,7 +52,7 @@ Setting up gork takes about 15 minutes, and you don't write any code. You instal
 Already at home in a terminal? With Docker or Podman running:
 
 ```sh
-git clone https://github.com/ultralightspeed/gork.git
+git clone --branch v0.1.3 https://github.com/ultralightspeed/gork.git
 cd gork
 npm run setup
 ```
@@ -77,14 +77,14 @@ Only Docker's or Podman's command-line tools with Compose are needed, not a Desk
 
 ### 2. Download gork
 
-Near the top of this page, click the green **Code** button, then **Download ZIP**. Unzip it (on Windows: right-click the file, then **Extract All**). You get a folder named `gork-main`; put it anywhere you like, such as your Documents folder.
+Open the [latest release](https://github.com/ultralightspeed/gork/releases/latest) and, under **Assets**, click **Source code (zip)**. A release is a finished version; the code on the main page can be ahead of it. Unzip the file (on Windows: right-click it, then **Extract All**). Find the folder that holds `package.json` and `README.md`, rename it to `gork`, and put it anywhere you like, such as your Documents folder.
 
 ### 3. Open a terminal in that folder
 
 A terminal is a window where you type commands.
 
-- **Windows**: open the `gork-main` folder, click the address bar at the top of the window, type `cmd` and press Enter. A black Command Prompt window opens, already in the right folder.
-- **Mac**: open **Terminal** (press Cmd+Space, type `Terminal`, press Enter). Type `cd` and a space, drag the `gork-main` folder into the Terminal window, and press Enter.
+- **Windows**: open the `gork` folder, click the address bar at the top of the window, type `cmd` and press Enter. A black Command Prompt window opens, already in the right folder.
+- **Mac**: open **Terminal** (press Cmd+Space, type `Terminal`, press Enter). Type `cd` and a space, drag the `gork` folder into the Terminal window, and press Enter.
 - **Linux**: right-click inside the folder and choose **Open in Terminal**.
 
 ### 4. Start the setup page
@@ -95,14 +95,14 @@ Type this and press Enter:
 npm run setup
 ```
 
-It opens a page in your web browser (or prints an address to copy into it). Nothing else needs installing: `npm run setup` uses only what comes with Node, and gork's own parts come inside its container image. The page walks you through four steps:
+It opens a page in your web browser (or prints an address to copy into it). Nothing else needs installing: `npm run setup` uses only what comes with Node, and gork's own parts come inside its container image. It runs gork's own code from this folder, as you; no gork command needs an administrator or `sudo`. Paste tokens only into this page, whose address starts with `http://127.0.0.1:`. The page walks you through four steps:
 
 1. Choose how gork pays for the model (free or credits, see [What it costs](#what-it-costs)), its personality, who it may mention and your time zone.
 2. Create the bot in Discord and paste its token into the page. The page shows where to click, turns on the settings gork needs, and shows you the server gork joined so you can confirm it.
 3. Create a one-time Cloudflare setup token and paste it into the page. The page creates two Cloudflare tokens limited to what gork needs, sets up the AI Gateway, tests everything, and deletes the setup token.
 4. Click **Save the settings**, which writes your settings to a file named `.env`, then **Start gork**.
 
-Starting gork downloads its ready-made image from GitHub, which takes a few minutes. If the download fails, gork builds the image on your computer instead, which takes 15 to 30 minutes (longer on a Raspberry Pi). Leave the terminal window open until the page says gork is online. Then go to your server and write `@gork hello`.
+Starting gork downloads its ready-made image, which GitHub builds from this repository for each release ([how to check it](docs/setup.md#checking-the-image)). That takes a few minutes. If the download fails, gork builds the image on your computer instead, which takes 15 to 30 minutes (longer on a Raspberry Pi). Leave the terminal window open until the page says gork is online. Then go to your server and write `@gork hello`.
 
 ### Afterwards
 
@@ -135,7 +135,7 @@ At the default 50-cent cap, gork can answer roughly 250 to 500 simple replies a 
 
 ## More
 
-- [Setup guide](docs/setup.md): the setup page step by step, setting up by hand, Docker or Podman, free mode, everyday commands, and keeping gork online.
+- [Setup guide](docs/setup.md): the setup page step by step, setting up by hand, Docker or Podman, checking the image, free mode, everyday commands, updating, and keeping gork online.
 - [What gork does in your server](docs/behavior.md): the safety screen, pings (`MENTIONS`), events (`TIMEZONE`), polls, images and link previews.
 - [Personalities](docs/personalities.md): the five presets and how to write your own.
 - [Privacy and auditing](docs/audit.md): what leaves your computer and where it goes. When someone mentions gork, recent messages from that channel go to Cloudflare, so tell your server members.
