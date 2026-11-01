@@ -8,6 +8,8 @@ import { type Attachment, type ReplyTally, type ToolOffer, type ToolResult, type
 export type LlmResult = {
   text: string;
   promptTokens: number;
+  /** The part of promptTokens the answers reported as cached, billed at the cached price. */
+  cachedTokens: number;
   completionTokens: number;
   toolCalls: number;
   costUsd: number;
@@ -52,7 +54,7 @@ type Completion = {
       tool_calls?: Array<{ id: string; function?: { name?: string; arguments?: unknown } }>;
     };
   }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
 };
 
 const LLM_TIMEOUT_MS = 60_000;
@@ -162,6 +164,7 @@ export async function answer(
   const convo = [...messages];
   let toolCalls = 0,
     pt = 0,
+    cached = 0,
     ct = 0,
     toolCost = 0,
     reserved = 0,
@@ -180,9 +183,12 @@ export async function answer(
   const result = (text: string, outOfBudget = false): LlmResult => ({
     text,
     promptTokens: pt,
+    cachedTokens: cached,
     completionTokens: ct,
     toolCalls,
-    costUsd: (pt * cfg.llm.priceInPerM + ct * cfg.llm.priceOutPerM) / 1e6 + toolCost,
+    costUsd:
+      ((pt - cached) * cfg.llm.priceInPerM + cached * cfg.llm.priceCachedInPerM + ct * cfg.llm.priceOutPerM) / 1e6 +
+      toolCost,
     reservedUsd: reserved,
     usageEstimated: estimated,
     outOfBudget,
@@ -215,6 +221,9 @@ export async function answer(
     if (inTokens === undefined || outTokens === undefined) estimated = true;
     pt += inTokens ?? estTokens(sent);
     ct += outTokens ?? MAX_OUTPUT_TOKENS;
+    // Never more than the round's input: a bad count can't make the cost negative.
+    if (inTokens !== undefined)
+      cached += Math.min(tokenCount(data.usage?.prompt_tokens_details?.cached_tokens) ?? 0, inTokens);
     const msg = data.choices?.[0]?.message ?? {};
     if (msg.tool_calls != null && !Array.isArray(msg.tool_calls))
       throw new LlmError(`${cfg.llm.model} sent tool_calls that is not a list`, reserved);

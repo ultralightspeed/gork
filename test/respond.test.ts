@@ -94,6 +94,7 @@ const watched = (over: Partial<VideoResult> = {}): VideoResult => ({
 const answered = (over: Partial<LlmResult> = {}): LlmResult => ({
   text: "the answer",
   promptTokens: 10,
+  cachedTokens: 0,
   completionTokens: 5,
   toolCalls: 0,
   costUsd: 0.001,

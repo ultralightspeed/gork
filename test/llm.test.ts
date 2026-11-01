@@ -65,6 +65,34 @@ describe("answer", () => {
     expect(calls[0].headers["cf-aig-collect-log-payload"]).toBe("false");
   });
 
+  it("prices the input the answer reports as cached at the cached price", async () => {
+    const usage = (cached: unknown) => ({
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      prompt_tokens_details: { cached_tokens: cached },
+    });
+    const { f } = scripted([
+      completion(toolCall("c1", "web_search", '{"query":"sky"}'), usage(80)),
+      // A count larger than the input, or not a number, can't push the cost below the uncached part.
+      completion({ content: "Blue." }, usage(500)),
+    ]);
+    const r = await answer(cfg, msgs, { fetch: f, runTool: async () => ({ content: "x", costUsd: 0 }), reserve: yes });
+    expect(r.cachedTokens).toBe(180);
+    const { priceInPerM, priceCachedInPerM, priceOutPerM } = cfg.llm;
+    expect(r.costUsd).toBeCloseTo((20 * priceInPerM + 180 * priceCachedInPerM + 40 * priceOutPerM) / 1e6, 10);
+  });
+
+  it("counts no cached tokens when the answer doesn't report them, or reports nonsense", async () => {
+    const { f } = scripted([
+      completion(
+        { content: "Blue." },
+        { prompt_tokens: 100, completion_tokens: 20, prompt_tokens_details: { cached_tokens: "lots" } },
+      ),
+    ]);
+    const r = await answer(cfg, msgs, { fetch: f, runTool: async () => ({ content: "", costUsd: 0 }), reserve: yes });
+    expect(r.cachedTokens).toBe(0);
+  });
+
   it("runs a tool round then answers, adding tool cost", async () => {
     const { f, calls } = scripted([
       completion(toolCall("c1", "web_search", '{"query":"sky color"}')),

@@ -242,6 +242,12 @@ export const SETTINGS = {
     help: "USD per million input tokens for LLM_MODEL; drives the spend estimate.",
     parse: nonNegative,
   }),
+  LLM_PRICE_CACHED_IN_PER_M: setting({
+    group: "Model",
+    default: "0.03",
+    help: "USD per million cached input tokens for LLM_MODEL: the start of a request that matches a recent one, which Workers AI bills at a discount.",
+    parse: nonNegative,
+  }),
   LLM_PRICE_OUT_PER_M: setting({
     group: "Model",
     default: "0.50",
@@ -428,6 +434,8 @@ export interface Config {
     apiKey: string;
     reasoningEffort: string;
     priceInPerM: number;
+    /** For input tokens the answer reports as cached (prefix caching). */
+    priceCachedInPerM: number;
     priceOutPerM: number;
     /** The model takes images; when it doesn't, gork sends it none (no attached images, no video frames). */
     vision: boolean;
@@ -500,6 +508,7 @@ export function loadConfig(env: Env = process.env): Config {
       apiKey: llmKey(s.LLM_API_KEY, baseUrl, s.CF_RUN_TOKEN),
       reasoningEffort: s.LLM_REASONING_EFFORT,
       priceInPerM: s.LLM_PRICE_IN_PER_M,
+      priceCachedInPerM: s.LLM_PRICE_CACHED_IN_PER_M,
       priceOutPerM: s.LLM_PRICE_OUT_PER_M,
       vision: !TEXT_ONLY_MODELS.has(model),
     },
