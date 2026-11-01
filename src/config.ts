@@ -233,8 +233,8 @@ export const SETTINGS = {
   LLM_REASONING_EFFORT: setting({
     group: "Model",
     default: "low",
-    help: "low, medium, high or max; off leaves the field out of the request (GLM-5.3 cannot turn reasoning off).",
-    parse: oneOf("off", "low", "medium", "high", "max"),
+    help: "none, low, medium, high or max; off leaves the field out of the request, so the model uses its own default. none turns reasoning off on models that allow it (DeepSeek V4.1 Flash does; GLM-5.3 doesn't).",
+    parse: oneOf("off", "none", "low", "medium", "high", "max"),
   }),
   LLM_PRICE_IN_PER_M: setting({
     group: "Model",
