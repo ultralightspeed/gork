@@ -60,8 +60,13 @@ type Completion = {
 const LLM_TIMEOUT_MS = 60_000;
 /** Most bytes read of a model answer; MAX_OUTPUT_TOKENS of text is far less. */
 const MAX_ANSWER_BYTES = 8 * 1024 * 1024;
-/** Most tokens one model call may produce, reasoning included. */
-export const MAX_OUTPUT_TOKENS = 1500;
+/**
+ * Most tokens one model call may produce, reasoning included. A reply is at most about 1,500 characters, but a model
+ * reasoning at high effort can think for a few thousand tokens first; with too small a cap it never gets to the text.
+ */
+export const MAX_OUTPUT_TOKENS = 4000;
+/** Sent once when the model answers with no text, so a reply isn't lost to a model that kept reaching for tools. */
+const ANSWER_NOW = "(No more tools. Answer now, in your reply to the question, with what you already have.)";
 /** How long to wait before each retry when Workers AI is out of capacity for the model (isCapacityExceeded). */
 export const CAPACITY_RETRY_MS = [2000, 5000] as const;
 /** After this long on one reply the model stops using tools and answers with what it has. */
@@ -173,7 +178,8 @@ export async function answer(
     ct = 0,
     toolCost = 0,
     reserved = 0,
-    estimated = false;
+    estimated = false,
+    askedAgain = false;
   const searches = { run: 0, primary: 0, fallback: 0 };
   // A tool holds what it is about to spend through this, so the hold is part of the reply's reservation and is settled
   // with the rest whatever the tool does next (spends it, spends less, or fails).
@@ -244,7 +250,16 @@ export async function answer(
     if (msg.tool_calls != null && !Array.isArray(msg.tool_calls))
       throw new LlmError(`${cfg.llm.model} sent tool_calls that is not a list`, reserved);
     const calls = toolsOn ? (msg.tool_calls ?? []) : [];
-    if (calls.length === 0) return result(cleanText(msg.content));
+    if (calls.length === 0) {
+      const text = cleanText(msg.content);
+      // An empty answer, usually a model still calling tools after they were taken away, gets one more ask.
+      if (text === "" && !askedAgain) {
+        askedAgain = true;
+        convo.push({ role: "user", content: ANSWER_NOW });
+        continue;
+      }
+      return result(text);
+    }
     convo.push({ role: "assistant", content: typeof msg.content === "string" ? msg.content : "", tool_calls: calls });
     const roundImages: ToolImage[] = [];
     for (const call of calls) {

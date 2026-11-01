@@ -129,6 +129,27 @@ describe("answer", () => {
     expect(calls[2].body.tools).toBeUndefined();
   });
 
+  it("asks once more when the answer after the tool limit is empty (the model still tried to call a tool)", async () => {
+    const c = testConfig({ MAX_TOOL_CALLS: "1" });
+    const search = toolCall("x", "web_search", '{"query":"sky"}');
+    const { f, calls } = scripted([completion(search), completion(search), completion({ content: "Blue." })]);
+    const r = await answer(c, msgs, { fetch: f, runTool: async () => ({ content: "r", costUsd: 0 }), reserve: yes });
+    expect(r.text).toBe("Blue.");
+    expect(calls).toHaveLength(3);
+    expect(calls[2].body.tools).toBeUndefined();
+    expect(calls[2].body.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: expect.stringMatching(/answer now/i),
+    });
+  });
+
+  it("asks only once: a second empty answer is the answer", async () => {
+    const { f, calls } = scripted([completion({ content: "" }), completion({ content: "" })]);
+    const r = await answer(cfg, msgs, { fetch: f, runTool: async () => ({ content: "", costUsd: 0 }), reserve: yes });
+    expect(r.text).toBe("");
+    expect(calls).toHaveLength(2);
+  });
+
   it("counts calls made in one round against MAX_TOOL_CALLS, and does not run the ones over it", async () => {
     const c = testConfig({ MAX_TOOL_CALLS: "1" });
     const two = {
