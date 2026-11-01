@@ -4,9 +4,11 @@ import tls from "node:tls";
 import { describe, expect, it } from "vitest";
 import { DISTRUSTED_ROOTS, distrustRoots, filterBundle, fingerprint, withoutDistrusted } from "../src/distrust.ts";
 
-// Node's own bundled Mozilla roots: emSign ECC Root CA - G3 is one of them, so it is a real root to remove.
-const bundled = tls.getCACertificates("bundled");
-const emSign = bundled.find((p) => new X509Certificate(p).subject.includes("CN=emSign ECC Root CA - G3"));
+// emSign ECC Root CA - G3, a real distrusted root, from a file: Node 24.22.1 and later no longer bundle it. The other
+// roots are Node's own bundled Mozilla roots, less any distrusted ones an older Node still ships.
+const emSign = readFileSync(new URL("./emsign-ecc-root-ca-g3.pem", import.meta.url), "utf8");
+const bundled = tls.getCACertificates("bundled").filter((p) => !DISTRUSTED_ROOTS.has(fingerprint(p)));
+const withEmSign = [...bundled, emSign];
 
 describe("roots gork refuses to trust", () => {
   it("lists the four roots above the compromised eMudhra intermediates (October 2026), by SHA-256", () => {
@@ -20,18 +22,16 @@ describe("roots gork refuses to trust", () => {
     );
   });
 
-  it("drops emSign ECC Root CA - G3 from Node's bundled roots and keeps every other root", () => {
-    expect(emSign, "this Node's bundled store no longer has the root; the test needs another source").toBeDefined();
-    expect(fingerprint(emSign as string)).toBe("86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B");
-    const kept = withoutDistrusted(bundled);
-    expect(kept).not.toContain(emSign);
-    expect(kept.length).toBe(bundled.length - 1);
+  it("drops emSign ECC Root CA - G3 from a set of roots and keeps every other root", () => {
+    expect(new X509Certificate(emSign).subject).toContain("CN=emSign ECC Root CA - G3");
+    expect(fingerprint(emSign)).toBe("86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B");
+    expect(withoutDistrusted(withEmSign)).toEqual(bundled);
   });
 
   it("sets the process's default trust store without the distrusted roots, and says how many went", () => {
     let set: string[] | null = null;
     const fake = {
-      getCACertificates: () => bundled,
+      getCACertificates: () => withEmSign,
       setDefaultCACertificates: (certs: string[]) => {
         set = certs;
       },
@@ -46,11 +46,11 @@ describe("roots gork refuses to trust", () => {
   });
 
   it("filters a PEM bundle file such as ffmpeg's, keeping the other certificates byte for byte", () => {
-    const other = bundled.find((p) => p !== emSign) as string;
+    const other = bundled[0];
     const r = filterBundle(`# a comment line\n${other}\n${emSign}\n`);
     expect(r.removed).toBe(1);
     expect(r.text).toContain(other.trim());
-    expect(r.text).not.toContain((emSign as string).trim());
+    expect(r.text).not.toContain(emSign.trim());
   });
 });
 
