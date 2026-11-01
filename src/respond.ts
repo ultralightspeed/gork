@@ -104,6 +104,8 @@ export type RespondDeps = {
   botName: string;
   log: (line: string) => void;
   systemPrompt: () => string;
+  /** The per-reply notes (replyNotes) that end the request. */
+  replyNotes: () => string;
   downloadImages: (urls: string[]) => Promise<string[]>;
   readVideo: (urls: string[]) => Promise<VideoResult>;
   /** Opens the video for the model to look closer at (the video_frames tool): over the pool that was just screened. */
@@ -275,6 +277,7 @@ async function work(req: RespondRequest, deps: RespondDeps): Promise<Outcome | n
     unseenImages,
     failedImages,
     video: videoContext(req, video, look, room),
+    notes: deps.replyNotes(),
   });
 
   let result: LlmResult;

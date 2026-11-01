@@ -99,6 +99,7 @@ async function reply(o: { flagNewFrames?: boolean; maxToolCalls?: string; askerI
     botName: "gork",
     log: () => {},
     systemPrompt: () => "SYSTEM",
+    replyNotes: () => "<reply_notes>",
     downloadImages: async () => own,
     readVideo: async () => video,
     videoWatch: (v, room) =>

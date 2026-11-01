@@ -89,6 +89,7 @@ async function reply(o: { modelAsks?: boolean; flag?: "S4" | "S11"; config?: Rec
     botName: "gork",
     log: () => {},
     systemPrompt: () => "SYSTEM",
+    replyNotes: () => "<reply_notes>",
     downloadImages: (urls) => downloadImages(urls, cf.f),
     readVideo: async () => {
       throw new Error("no video here");

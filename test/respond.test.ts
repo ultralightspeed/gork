@@ -143,6 +143,7 @@ function setup(over: { req?: Partial<RespondRequest>; deps?: Partial<RespondDeps
     botName: "gork",
     log: () => {},
     systemPrompt: () => "SYSTEM",
+    replyNotes: () => "<reply_notes>",
     downloadImages: async (urls) => {
       calls.download++;
       return urls.map(() => "data:image/png;base64,AA==");
@@ -237,6 +238,7 @@ describe("respond: links the model may open", () => {
     let links: LinkSet | undefined;
     const { req, deps } = setup({
       deps: {
+        replyNotes: () => "<reply_notes>",
         systemPrompt: () => "SYSTEM. For class changes read https://www.wowhead.com/forever/changes",
         answer: async (_m, opts) => {
           links = opts.links;

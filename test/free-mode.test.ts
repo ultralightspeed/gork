@@ -90,6 +90,7 @@ async function fullReply(env: Record<string, string>) {
     botName: "gork",
     log: () => {},
     systemPrompt: () => "SYSTEM",
+    replyNotes: () => "<reply_notes>",
     downloadImages: async () => [],
     readVideo: async () => {
       throw new Error("no video in this request");

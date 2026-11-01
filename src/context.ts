@@ -204,6 +204,8 @@ export function buildMessages(o: {
   /** Images that were attached but couldn't be downloaded, so the model is told they weren't shown. */
   failedImages?: number;
   video?: VideoContext;
+  /** replyNotes: last, so everything before it in the request can be the same from reply to reply. */
+  notes?: string;
 }): ChatMessage[] {
   const numbers = imageNumbers(o.history);
   const lines = o.history.map((h, i) =>
@@ -240,6 +242,7 @@ export function buildMessages(o: {
   const frames = o.video?.frames ?? [];
   const video = o.video && videoBlock(o.video);
   if (video) blocks.push(video);
+  if (o.notes) blocks.push(o.notes);
   const text = blocks.join("\n\n");
   const image = (url: string): ContentPart => ({ type: "image_url", image_url: { url } });
   const parts: ContentPart[] = [{ type: "text", text }, ...images.map(image)];

@@ -31,7 +31,7 @@ import { givenLinks } from "./links.ts";
 import { answer } from "./llm.ts";
 import { mayPingEveryone, NO_PINGS, pingFirstChunk } from "./mentions.ts";
 import { resolveNames, toMsg, videoSources } from "./message.ts";
-import { loadPersona, type Persona, SAFETY_REPLIES, systemPrompt } from "./persona.ts";
+import { loadPersona, type Persona, replyNotes, SAFETY_REPLIES, systemPrompt } from "./persona.ts";
 import { type RespondDeps, respond } from "./respond.ts";
 import { describeSearch } from "./search.ts";
 import { newToolState, runTool } from "./tools.ts";
@@ -100,12 +100,9 @@ async function main(): Promise<void> {
     botName: persona.name,
     log,
     systemPrompt: () =>
-      systemPrompt(persona, utcDay(), {
-        quirk: Math.random() < persona.quirkRate,
-        mentions: cfg.mentions,
-        search: cfg.billing !== "free",
-        timeZone: cfg.timeZone,
-      }),
+      systemPrompt(persona, { mentions: cfg.mentions, search: cfg.billing !== "free", timeZone: cfg.timeZone }),
+    replyNotes: () =>
+      replyNotes(persona, utcDay(), { quirk: Math.random() < persona.quirkRate, timeZone: cfg.timeZone }),
     downloadImages: (urls) => downloadImages(urls),
     readVideo: (urls) =>
       readVideo(cfg, urls, { reserve: (usd) => budget.tryReserve(usd), slots: videoSlots, gate: videoGate, log }),
