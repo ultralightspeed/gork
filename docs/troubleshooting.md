@@ -52,6 +52,7 @@ After fixing it, run `npm run up`.
 - If gork says it is out of budget, it reached `DAILY_BUDGET_USD`. It resets at 00:00 UTC.
 - If gork says its safety check is down, look for a log line that starts with `guard`: the call to the safety check failed. If it says the free allowance is used up, it will answer again after 00:00 UTC (or switch to credits mode).
 - If replies fail, check your Cloudflare credits. `npm run up` warns when the balance is $0.
+- If gork answers with its error reply and the log line has `LLM HTTP 429` and `Capacity temporarily exceeded`, Workers AI had no room for the model at that moment. gork already tried twice more before giving up. It happens more with newly added models; asking again a little later usually works, and switching `LLM_MODEL` back to the default avoids it.
 
 ## gork won't create events
 

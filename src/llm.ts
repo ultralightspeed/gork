@@ -1,4 +1,4 @@
-import { CfError, isFreeAllowanceExhausted, readText, unwrapResult, withoutSecrets } from "./cf.ts";
+import { CfError, isCapacityExceeded, isFreeAllowanceExhausted, readText, unwrapResult, withoutSecrets } from "./cf.ts";
 import type { Config } from "./config.ts";
 import { type ChatMessage, fitImages, forWire, type ToolImage, toolImagesMessage } from "./context.ts";
 import type { EventChange, ScheduledEvent } from "./event.ts";
@@ -62,6 +62,8 @@ const LLM_TIMEOUT_MS = 60_000;
 const MAX_ANSWER_BYTES = 8 * 1024 * 1024;
 /** Most tokens one model call may produce, reasoning included. */
 export const MAX_OUTPUT_TOKENS = 1500;
+/** How long to wait before each retry when Workers AI is out of capacity for the model (isCapacityExceeded). */
+export const CAPACITY_RETRY_MS = [2000, 5000] as const;
 /** After this long on one reply the model stops using tools and answers with what it has. */
 export const REPLY_DEADLINE_SECONDS = 90;
 /**
@@ -149,12 +151,15 @@ export async function answer(
     reserve: (usd: number) => boolean;
     /** The clock, in ms; injectable for tests. */
     now?: () => number;
+    /** Waits before a capacity retry; injectable for tests. */
+    sleep?: (ms: number) => Promise<void>;
     /** Which of the tools only some requests get (video_frames, view_images) this one is offered. */
     offer?: ToolOffer;
   },
 ): Promise<LlmResult> {
   const f = deps.fetch ?? fetch;
   const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const deadline = now() + REPLY_DEADLINE_SECONDS * 1000;
   const attachments: Attachment[] = [];
   let poll: Poll | null = null;
@@ -209,7 +214,18 @@ export async function answer(
     reserved += roundUsd;
     let data: Completion;
     try {
-      data = await chat(cfg, sent, toolsOn ? toolDefs(cfg, deps.offer) : null, f);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          data = await chat(cfg, sent, toolsOn ? toolDefs(cfg, deps.offer) : null, f);
+          break;
+        } catch (err) {
+          // A busy model is retried a couple of times, but never past the reply deadline. A failed call isn't billed.
+          const wait = CAPACITY_RETRY_MS[attempt];
+          const busy = err instanceof ChatHttpError && isCapacityExceeded(err);
+          if (!busy || wait === undefined || now() + wait >= deadline) throw err;
+          await sleep(wait);
+        }
+      }
     } catch (err) {
       const message =
         err instanceof ChatHttpError ? `LLM HTTP ${err.status}: ${err.body.slice(0, 160)}` : (err as Error).message;

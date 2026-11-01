@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ServerEvent } from "../src/event.ts";
 import {
   answer,
+  CAPACITY_RETRY_MS,
   cleanText,
   IMAGE_TOKENS,
   LlmError,
@@ -533,6 +534,69 @@ describe("answer", () => {
     expect(err).toBeInstanceOf(LlmError);
     expect(err.message).toMatch(/500/);
     expect(err.reservedUsd).toBeGreaterThan(0);
+  });
+
+  const busy = () =>
+    new Response(JSON.stringify({ errors: [{ message: "AiError: Capacity temporarily exceeded", code: 3040 }] }), {
+      status: 429,
+    });
+  const noWait = async () => {};
+
+  it("tries again when Workers AI is out of capacity for the model, and answers", async () => {
+    const { f, calls } = scripted([busy(), busy(), completion({ content: "Blue." })]);
+    const waits: number[] = [];
+    const r = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async () => ({ content: "", costUsd: 0 }),
+      reserve: yes,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    });
+    expect(r.text).toBe("Blue.");
+    expect(calls).toHaveLength(3);
+    expect(waits).toEqual([...CAPACITY_RETRY_MS]);
+  });
+
+  it("gives up on capacity after its retries, with the 429 in the error", async () => {
+    const { f, calls } = fakeFetch(() => busy());
+    const err = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async () => ({ content: "", costUsd: 0 }),
+      reserve: yes,
+      sleep: noWait,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmError);
+    expect(err.message).toMatch(/429.*Capacity/);
+    expect(calls).toHaveLength(CAPACITY_RETRY_MS.length + 1);
+  });
+
+  it("doesn't retry other 429s, such as the gateway's own rate limit", async () => {
+    const { f, calls } = fakeFetch(() => new Response('{"error":"rate limited"}', { status: 429 }));
+    const err = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async () => ({ content: "", costUsd: 0 }),
+      reserve: yes,
+      sleep: noWait,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmError);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("doesn't wait past the reply deadline for capacity", async () => {
+    let t = 0;
+    const { f, calls } = fakeFetch(() => busy());
+    const err = await answer(cfg, msgs, {
+      fetch: f,
+      runTool: async () => ({ content: "", costUsd: 0 }),
+      reserve: yes,
+      now: () => t,
+      sleep: async () => {
+        t += REPLY_DEADLINE_SECONDS * 1000;
+      },
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmError);
+    expect(calls).toHaveLength(2);
   });
 });
 

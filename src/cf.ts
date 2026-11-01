@@ -41,6 +41,22 @@ export function isFreeAllowanceExhausted(err: unknown): boolean {
   }
 }
 
+const CAPACITY_CODE = 3040;
+
+/**
+ * Whether a failed Workers AI call means the model is out of capacity for the moment (HTTP 429, error code 3040,
+ * "Capacity temporarily exceeded"): worth trying again shortly. Other 429s, such as the gateway's rate limit, are not.
+ */
+export function isCapacityExceeded(err: CfError): boolean {
+  if (err.status !== 429) return false;
+  try {
+    const { errors } = JSON.parse(err.body) as { errors?: Array<{ code?: unknown }> };
+    return Array.isArray(errors) && errors.some((e) => Number(e?.code) === CAPACITY_CODE);
+  } catch {
+    return false;
+  }
+}
+
 /** Cloudflare wraps answers as { result }; its OpenAI-compatible endpoint sometimes does too. Returns what is inside. */
 export function unwrapResult<T>(json: unknown): T {
   return ((json as { result?: unknown }).result ?? json) as T;
