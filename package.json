@@ -29,12 +29,12 @@
     "check": "npm run typecheck && npm run lint && npm run check-secrets && npm test"
   },
   "dependencies": {
-    "discord.js": "14.27.0"
+    "discord.js": "14.28.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.4",
+    "@biomejs/biome": "2.6.6",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   }
 }
