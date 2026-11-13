@@ -1,4 +1,4 @@
-FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS deps
+FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --no-fund --no-audit
@@ -18,7 +18,7 @@ RUN set -eu; cd node_modules; \
 # 65F7C6B4206BD057A7EB73787180713BE58D1ADC, which has expired but signed this release); OpenSSL's matches the
 # .sha256 the project publishes; LAME's matches the long-published 3.100 hash (no signature exists). To bump,
 # download, verify the same way and replace version and hash together.
-FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS ffmpeg-build
+FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS ffmpeg-build
 ARG FFMPEG_VERSION=9.0.2
 ARG FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
 ARG OPENSSL_VERSION=3.5.9
@@ -94,7 +94,7 @@ RUN /usr/local/bin/check-ffmpeg.sh /usr/local/bin/ffmpeg /usr/local/bin/openssl-
 # Runtime: only what node and ffmpeg need, copied onto an empty image. No shell, no busybox, no package manager, no
 # npm, npx, yarn or corepack: not removed from a bigger image (that would leave the bytes in a lower layer) but never
 # copied. node is stripped of its symbols (about 18 MB).
-FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS rootfs
+FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS rootfs
 RUN apk add --no-cache binutils
 # The bundle ffmpeg checks Discord's CDN against, less the roots src/distrust.ts lists (the bot drops them from its own
 # store when it starts). The build fails if the filter does.
